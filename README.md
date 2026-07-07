@@ -97,6 +97,10 @@ Then open http://localhost:8080 in a browser. The form auto-fills location/time 
 browser Geolocation API (`http://localhost` is treated as a secure context, so this works
 without HTTPS locally — AWS deployment will need HTTPS for Geolocation to keep working).
 
+The list of sightings can be filtered to the last N hours, and is also plotted on a map
+(Leaflet + OpenStreetMap tiles, loaded from a CDN) with a pin per sighting — the map
+re-fits itself to whatever sightings are currently loaded whenever the list changes.
+
 `client/app.js` points at the service via a hardcoded `API_BASE` constant — update it if
 the service isn't running on `http://localhost:8000`.
 
@@ -170,7 +174,8 @@ Coordinates are in GeoJSON order: `[longitude, latitude]`.
 
 This project is being built in stages:
 
-1. **Done**: collect sightings via a form, persist in Valkey, list all sightings, delete a sighting.
+1. **Done**: collect sightings via a form, persist in Valkey, list all sightings, delete a
+   sighting, and show them on a map.
 2. **Done**: filter sightings by time window (`since_hours`, both in the API and the client).
 3. **Current**: filter sightings by location (within Y nautical miles of a point, or
    within a defined region) — the geo index maintained in the store today exists to
