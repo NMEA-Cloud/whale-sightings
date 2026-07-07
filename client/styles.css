@@ -62,3 +62,19 @@ th, td {
 #form-status.success {
   color: #0a7d2c;
 }
+
+.note {
+  font-size: 0.85rem;
+  color: #666;
+  font-style: italic;
+}
+
+.delete-button {
+  margin-top: 0;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.85rem;
+  color: #b00020;
+  background: none;
+  border: 1px solid #b00020;
+  border-radius: 4px;
+}

@@ -46,6 +46,10 @@
   <section class="panel">
     <h2>All sightings</h2>
     <button id="refresh-button" type="button">Refresh</button>
+    <p class="note">
+      Delete is exposed here temporarily. Once auth exists, it will only be available
+      via an admin client, not this public one.
+    </p>
     <table id="sightings-table">
       <thead>
         <tr>
@@ -56,6 +60,7 @@
           <th>Method</th>
           <th>Location</th>
           <th>Comments</th>
+          <th></th>
         </tr>
       </thead>
       <tbody id="sightings-body"></tbody>

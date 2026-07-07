@@ -56,8 +56,18 @@ function renderSightings(records) {
       <td>${escapeHtml(sighting.method)}</td>
       <td>${lat.toFixed(4)}, ${lon.toFixed(4)}</td>
       <td>${escapeHtml(sighting.comments ?? "")}</td>
+      <td><button class="delete-button" data-id="${record.id}" type="button">Delete</button></td>
     `;
     sightingsBody.appendChild(row);
+  }
+}
+
+// Delete is only exposed here for iteration 1 convenience. Once auth exists, this
+// action should move to an admin-only client rather than staying on the public one.
+async function deleteSighting(id) {
+  const response = await fetch(`${API_BASE}/sightings/${id}`, { method: "DELETE" });
+  if (!response.ok) {
+    throw new Error(`Delete failed (${response.status})`);
   }
 }
 
@@ -118,6 +128,22 @@ form.addEventListener("submit", async (event) => {
 
 refreshButton.addEventListener("click", () => {
   loadSightings().catch((error) => setFormStatus(error.message, true));
+});
+
+sightingsBody.addEventListener("click", async (event) => {
+  const button = event.target.closest(".delete-button");
+  if (!button) {
+    return;
+  }
+  if (!confirm("Delete this sighting?")) {
+    return;
+  }
+  try {
+    await deleteSighting(button.dataset.id);
+    await loadSightings();
+  } catch (error) {
+    setFormStatus(error.message, true);
+  }
 });
 
 loadSightings().catch((error) => setFormStatus(error.message, true));
