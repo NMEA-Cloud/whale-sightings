@@ -7,6 +7,9 @@ const form = document.getElementById("sighting-form");
 const formStatus = document.getElementById("form-status");
 const refreshButton = document.getElementById("refresh-button");
 const sightingsBody = document.getElementById("sightings-body");
+const latitudeInput = document.getElementById("latitude");
+const longitudeInput = document.getElementById("longitude");
+const locateButton = document.getElementById("locate-button");
 
 function getCurrentPosition() {
   return new Promise((resolve, reject) => {
@@ -16,6 +19,20 @@ function getCurrentPosition() {
     }
     navigator.geolocation.getCurrentPosition(resolve, reject);
   });
+}
+
+// Pre-fills the latitude/longitude fields from the browser's current position, but
+// leaves them as plain editable inputs so the user can correct them before submitting.
+async function populateLocationFields() {
+  setFormStatus("Detecting your location...", false);
+  try {
+    const position = await getCurrentPosition();
+    latitudeInput.value = position.coords.latitude;
+    longitudeInput.value = position.coords.longitude;
+    setFormStatus("Location detected. Edit it above if needed.", false);
+  } catch (error) {
+    setFormStatus(`Could not detect location automatically (${error.message}). Enter it manually.`, true);
+  }
 }
 
 function buildLocation(longitude, latitude, isoDatetime) {
@@ -79,16 +96,15 @@ function escapeHtml(value) {
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  setFormStatus("Getting your location...", false);
 
   try {
-    const position = await getCurrentPosition();
+    // The latitude/longitude inputs are required with min/max, so the browser has
+    // already validated them by the time this handler runs.
+    const latitude = Number(latitudeInput.value);
+    const longitude = Number(longitudeInput.value);
+
     const isoDatetime = new Date().toISOString();
-    const location = buildLocation(
-      position.coords.longitude,
-      position.coords.latitude,
-      isoDatetime
-    );
+    const location = buildLocation(longitude, latitude, isoDatetime);
 
     const payload = {
       sighting: {
@@ -121,6 +137,7 @@ form.addEventListener("submit", async (event) => {
     form.reset();
     setFormStatus("Sighting submitted.", false);
     await loadSightings();
+    await populateLocationFields();
   } catch (error) {
     setFormStatus(error.message, true);
   }
@@ -128,6 +145,10 @@ form.addEventListener("submit", async (event) => {
 
 refreshButton.addEventListener("click", () => {
   loadSightings().catch((error) => setFormStatus(error.message, true));
+});
+
+locateButton.addEventListener("click", () => {
+  populateLocationFields();
 });
 
 sightingsBody.addEventListener("click", async (event) => {
@@ -147,3 +168,4 @@ sightingsBody.addEventListener("click", async (event) => {
 });
 
 loadSightings().catch((error) => setFormStatus(error.message, true));
+populateLocationFields();
