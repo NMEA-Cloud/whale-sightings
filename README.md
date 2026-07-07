@@ -63,6 +63,13 @@ List all sightings (newest first):
 curl http://localhost:8000/sightings
 ```
 
+Delete a sighting by id (not auth-protected yet — intended for privileged/admin use
+once OAuth2/OIDC lands, see roadmap below):
+
+```bash
+curl -X DELETE http://localhost:8000/sightings/<id>
+```
+
 ## Running the client
 
 The client is a static site with no build step, and is not part of `docker-compose.yml`.

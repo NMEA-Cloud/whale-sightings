@@ -16,3 +16,7 @@ class SightingStore(ABC):
     @abstractmethod
     def get(self, sighting_id: UUID) -> SightingRecord | None:
         """Return a single sighting by id, or None if it doesn't exist."""
+
+    @abstractmethod
+    def delete(self, sighting_id: UUID) -> bool:
+        """Delete a sighting by id. Return True if it existed and was deleted."""

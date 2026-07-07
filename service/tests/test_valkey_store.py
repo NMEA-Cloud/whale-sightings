@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timezone
 
 from app.models import (
@@ -50,6 +51,20 @@ def test_list_all_newest_first(store):
 
 
 def test_get_returns_none_for_unknown_id(store):
-    import uuid
-
     assert store.get(uuid.uuid4()) is None
+
+
+def test_delete_removes_record_and_indexes(store, fake_redis_client):
+    record = store.create(make_payload())
+
+    deleted = store.delete(record.id)
+
+    assert deleted is True
+    assert fake_redis_client.get(f"sighting:{record.id}") is None
+    assert fake_redis_client.zscore("sightings:by_time", str(record.id)) is None
+    assert fake_redis_client.zscore("sightings:geo", str(record.id)) is None
+    assert store.list_all() == []
+
+
+def test_delete_returns_false_for_unknown_id(store):
+    assert store.delete(uuid.uuid4()) is False

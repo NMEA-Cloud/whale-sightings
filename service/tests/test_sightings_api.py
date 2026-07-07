@@ -37,6 +37,13 @@ def test_create_sighting_returns_201_with_id(client):
     assert "id" in body
     assert body["sighting"]["species"] == "Greater Pacific Wombat"
 
+    # Confirm it's retrievable via GET before cleaning it up via DELETE.
+    assert any(r["id"] == body["id"] for r in client.get("/sightings").json())
+
+    delete_response = client.delete(f"/sightings/{body['id']}")
+    assert delete_response.status_code == 204
+    assert client.get("/sightings").json() == []
+
 
 def test_create_sighting_rejects_unknown_fields(client):
     payload = sample_payload_dict()
@@ -54,8 +61,8 @@ def test_list_sightings_newest_first(client):
     second = sample_payload_dict()
     second["sighting"]["location"]["geometry"]["properties"]["datetime"] = "2026-06-01T00:00:00Z"
 
-    client.post("/sightings", json=first)
-    client.post("/sightings", json=second)
+    first_id = client.post("/sightings", json=first).json()["id"]
+    second_id = client.post("/sightings", json=second).json()["id"]
 
     response = client.get("/sightings")
 
@@ -63,3 +70,14 @@ def test_list_sightings_newest_first(client):
     body = response.json()
     assert len(body) == 2
     assert body[0]["sighting"]["location"]["geometry"]["properties"]["datetime"].startswith("2026-06-01")
+
+    # GET is confirmed working above; now clean up via the delete endpoint.
+    assert client.delete(f"/sightings/{first_id}").status_code == 204
+    assert client.delete(f"/sightings/{second_id}").status_code == 204
+    assert client.get("/sightings").json() == []
+
+
+def test_delete_unknown_sighting_returns_404(client):
+    response = client.delete("/sightings/00000000-0000-0000-0000-000000000000")
+
+    assert response.status_code == 404

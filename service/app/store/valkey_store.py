@@ -62,3 +62,15 @@ class ValkeySightingStore(SightingStore):
         if raw is None:
             return None
         return SightingRecord.model_validate_json(raw)
+
+    def delete(self, sighting_id: UUID) -> bool:
+        record_id = str(sighting_id)
+
+        pipe = self._client.pipeline(transaction=True)
+        pipe.delete(f"{SIGHTING_KEY_PREFIX}{record_id}")
+        pipe.zrem(BY_TIME_KEY, record_id)
+        # GEOADD stores members in a sorted set under the hood, so ZREM removes them too.
+        pipe.zrem(GEO_KEY, record_id)
+        deleted_count, _, _ = pipe.execute()
+
+        return bool(deleted_count)
