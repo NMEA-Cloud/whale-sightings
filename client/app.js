@@ -10,6 +10,8 @@ const sightingsBody = document.getElementById("sightings-body");
 const latitudeInput = document.getElementById("latitude");
 const longitudeInput = document.getElementById("longitude");
 const locateButton = document.getElementById("locate-button");
+const datetimeInput = document.getElementById("datetime");
+const nowButton = document.getElementById("now-button");
 
 function getCurrentPosition() {
   return new Promise((resolve, reject) => {
@@ -33,6 +35,19 @@ async function populateLocationFields() {
   } catch (error) {
     setFormStatus(`Could not detect location automatically (${error.message}). Enter it manually.`, true);
   }
+}
+
+// datetime-local inputs take a timezone-less "YYYY-MM-DDTHH:mm:ss" string interpreted
+// as local time, so build that from the parts rather than using toISOString() (which is UTC).
+function toDatetimeLocalValue(date) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+// Pre-fills the datetime field with the current time, but leaves it editable so the
+// user can correct it before submitting (e.g. reporting a sighting after the fact).
+function populateDatetimeField() {
+  datetimeInput.value = toDatetimeLocalValue(new Date());
 }
 
 function buildLocation(longitude, latitude, isoDatetime) {
@@ -103,7 +118,9 @@ form.addEventListener("submit", async (event) => {
     const latitude = Number(latitudeInput.value);
     const longitude = Number(longitudeInput.value);
 
-    const isoDatetime = new Date().toISOString();
+    // The datetime input is required, so the browser has already validated it's
+    // present; it's local time with no timezone, so parse it as such via `new Date`.
+    const isoDatetime = new Date(datetimeInput.value).toISOString();
     const location = buildLocation(longitude, latitude, isoDatetime);
 
     const payload = {
@@ -138,6 +155,7 @@ form.addEventListener("submit", async (event) => {
     setFormStatus("Sighting submitted.", false);
     await loadSightings();
     await populateLocationFields();
+    populateDatetimeField();
   } catch (error) {
     setFormStatus(error.message, true);
   }
@@ -149,6 +167,10 @@ refreshButton.addEventListener("click", () => {
 
 locateButton.addEventListener("click", () => {
   populateLocationFields();
+});
+
+nowButton.addEventListener("click", () => {
+  populateDatetimeField();
 });
 
 sightingsBody.addEventListener("click", async (event) => {
@@ -169,3 +191,4 @@ sightingsBody.addEventListener("click", async (event) => {
 
 loadSightings().catch((error) => setFormStatus(error.message, true));
 populateLocationFields();
+populateDatetimeField();
