@@ -1,3 +1,6 @@
+from datetime import datetime, timedelta, timezone
+
+
 def sample_payload_dict() -> dict:
     return {
         "sighting": {
@@ -81,3 +84,33 @@ def test_delete_unknown_sighting_returns_404(client):
     response = client.delete("/sightings/00000000-0000-0000-0000-000000000000")
 
     assert response.status_code == 404
+
+
+def test_list_sightings_since_hours_filters_older_records(client):
+    recent = sample_payload_dict()
+    recent["sighting"]["location"]["geometry"]["properties"]["datetime"] = (
+        datetime.now(timezone.utc) - timedelta(hours=2)
+    ).isoformat()
+
+    old = sample_payload_dict()
+    old["sighting"]["location"]["geometry"]["properties"]["datetime"] = (
+        datetime.now(timezone.utc) - timedelta(hours=100)
+    ).isoformat()
+
+    recent_id = client.post("/sightings", json=recent).json()["id"]
+    old_id = client.post("/sightings", json=old).json()["id"]
+
+    response = client.get("/sightings", params={"since_hours": 24})
+
+    assert response.status_code == 200
+    assert [r["id"] for r in response.json()] == [recent_id]
+
+    # Clean up.
+    assert client.delete(f"/sightings/{recent_id}").status_code == 204
+    assert client.delete(f"/sightings/{old_id}").status_code == 204
+
+
+def test_list_sightings_rejects_non_positive_since_hours(client):
+    response = client.get("/sightings", params={"since_hours": 0})
+
+    assert response.status_code == 422

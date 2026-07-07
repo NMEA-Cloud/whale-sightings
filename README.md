@@ -63,6 +63,12 @@ List all sightings (newest first):
 curl http://localhost:8000/sightings
 ```
 
+List sightings from the last N hours (e.g. the last day):
+
+```bash
+curl "http://localhost:8000/sightings?since_hours=24"
+```
+
 Delete a sighting by id (not auth-protected yet — intended for privileged/admin use
 once OAuth2/OIDC lands, see roadmap below):
 
@@ -138,10 +144,11 @@ Coordinates are in GeoJSON order: `[longitude, latitude]`.
 
 This project is being built in stages:
 
-1. **Current**: collect sightings via a form, persist in Valkey, list all sightings.
-2. Filter sightings by time window (e.g. last X hours/days) and by location (within Y
-   nautical miles of a point, or within a defined region) — the time-sorted and geo
-   indexes maintained in the store today exist to make this additive.
-3. Optionally swap or offer a PostgreSQL storage backend behind the same storage interface.
-4. Add OAuth2 / OpenID Connect authentication, replacing the placeholder observer identity.
-5. Deploy the service to AWS.
+1. **Done**: collect sightings via a form, persist in Valkey, list all sightings, delete a sighting.
+2. **Done**: filter sightings by time window (`since_hours`, both in the API and the client).
+3. **Current**: filter sightings by location (within Y nautical miles of a point, or
+   within a defined region) — the geo index maintained in the store today exists to
+   make this additive.
+4. Optionally swap or offer a PostgreSQL storage backend behind the same storage interface.
+5. Add OAuth2 / OpenID Connect authentication, replacing the placeholder observer identity.
+6. Deploy the service to AWS.

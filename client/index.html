@@ -52,13 +52,20 @@
       <textarea id="comments" rows="3"></textarea>
 
       <button type="submit">Submit sighting</button>
-      <p id="form-status" role="status"></p>
+      <p id="form-status" class="status" role="status"></p>
     </form>
   </section>
 
   <section class="panel">
     <h2>All sightings</h2>
+    <div class="filter-row">
+      <label for="since-hours-filter">Show sightings from the last</label>
+      <input id="since-hours-filter" type="number" min="0" step="any" placeholder="e.g. 24" />
+      <span>hours (blank = all)</span>
+    </div>
     <button id="refresh-button" type="button">Refresh</button>
+    <button id="clear-filter-button" type="button">Show all</button>
+    <p id="list-status" class="status" role="status"></p>
     <p class="note">
       Delete is exposed here temporarily. Once auth exists, it will only be available
       via an admin client, not this public one.

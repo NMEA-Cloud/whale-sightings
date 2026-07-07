@@ -50,6 +50,26 @@ def test_list_all_newest_first(store):
     assert [r.id for r in records] == [newer_record.id, older_record.id]
 
 
+def test_list_since_excludes_records_before_cutoff(store):
+    old_record = store.create(make_payload(when=datetime(2026, 1, 1, tzinfo=timezone.utc)))
+    new_record = store.create(make_payload(when=datetime(2026, 6, 1, tzinfo=timezone.utc)))
+
+    cutoff = datetime(2026, 3, 1, tzinfo=timezone.utc)
+    records = store.list_since(cutoff)
+
+    assert [r.id for r in records] == [new_record.id]
+    assert old_record.id not in [r.id for r in records]
+
+
+def test_list_since_includes_record_exactly_at_cutoff(store):
+    cutoff = datetime(2026, 3, 1, tzinfo=timezone.utc)
+    record = store.create(make_payload(when=cutoff))
+
+    records = store.list_since(cutoff)
+
+    assert [r.id for r in records] == [record.id]
+
+
 def test_get_returns_none_for_unknown_id(store):
     assert store.get(uuid.uuid4()) is None
 

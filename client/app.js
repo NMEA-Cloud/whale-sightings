@@ -5,6 +5,7 @@ const OBSERVER_ID_PLACEHOLDER = "https://example.org/users/anonymous-observer";
 
 const form = document.getElementById("sighting-form");
 const formStatus = document.getElementById("form-status");
+const listStatus = document.getElementById("list-status");
 const refreshButton = document.getElementById("refresh-button");
 const sightingsBody = document.getElementById("sightings-body");
 const latitudeInput = document.getElementById("latitude");
@@ -12,6 +13,8 @@ const longitudeInput = document.getElementById("longitude");
 const locateButton = document.getElementById("locate-button");
 const datetimeInput = document.getElementById("datetime");
 const nowButton = document.getElementById("now-button");
+const sinceHoursFilterInput = document.getElementById("since-hours-filter");
+const clearFilterButton = document.getElementById("clear-filter-button");
 
 function getCurrentPosition() {
   return new Promise((resolve, reject) => {
@@ -62,11 +65,24 @@ function buildLocation(longitude, latitude, isoDatetime) {
 
 function setFormStatus(message, isError) {
   formStatus.textContent = message;
-  formStatus.className = isError ? "error" : "success";
+  formStatus.className = `status ${isError ? "error" : "success"}`;
+}
+
+function setListStatus(message, isError) {
+  listStatus.textContent = message;
+  listStatus.className = `status ${isError ? "error" : "success"}`;
 }
 
 async function loadSightings() {
-  const response = await fetch(`${API_BASE}/sightings`);
+  // Clear any error from a previous load attempt so it doesn't linger after this one succeeds.
+  setListStatus("", false);
+
+  const sinceHours = sinceHoursFilterInput.value;
+  const url = sinceHours
+    ? `${API_BASE}/sightings?since_hours=${encodeURIComponent(sinceHours)}`
+    : `${API_BASE}/sightings`;
+
+  const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Failed to load sightings (${response.status})`);
   }
@@ -153,7 +169,7 @@ form.addEventListener("submit", async (event) => {
 
     form.reset();
     setFormStatus("Sighting submitted.", false);
-    await loadSightings();
+    await loadSightings().catch((error) => setListStatus(error.message, true));
     await populateLocationFields();
     populateDatetimeField();
   } catch (error) {
@@ -162,7 +178,12 @@ form.addEventListener("submit", async (event) => {
 });
 
 refreshButton.addEventListener("click", () => {
-  loadSightings().catch((error) => setFormStatus(error.message, true));
+  loadSightings().catch((error) => setListStatus(error.message, true));
+});
+
+clearFilterButton.addEventListener("click", () => {
+  sinceHoursFilterInput.value = "";
+  loadSightings().catch((error) => setListStatus(error.message, true));
 });
 
 locateButton.addEventListener("click", () => {
@@ -185,10 +206,10 @@ sightingsBody.addEventListener("click", async (event) => {
     await deleteSighting(button.dataset.id);
     await loadSightings();
   } catch (error) {
-    setFormStatus(error.message, true);
+    setListStatus(error.message, true);
   }
 });
 
-loadSightings().catch((error) => setFormStatus(error.message, true));
+loadSightings().catch((error) => setListStatus(error.message, true));
 populateLocationFields();
 populateDatetimeField();

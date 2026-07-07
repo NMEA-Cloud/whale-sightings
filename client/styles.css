@@ -50,17 +50,32 @@ th, td {
   font-size: 0.9rem;
 }
 
-#form-status {
+.status {
   min-height: 1.2rem;
   font-size: 0.9rem;
 }
 
-#form-status.error {
+.status.error {
   color: #b00020;
 }
 
-#form-status.success {
+.status.success {
   color: #0a7d2c;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.filter-row label {
+  margin-top: 0;
+}
+
+.filter-row input {
+  width: 6rem;
 }
 
 .note {

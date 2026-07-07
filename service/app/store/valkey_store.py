@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from redis import Redis
@@ -47,6 +48,13 @@ class ValkeySightingStore(SightingStore):
 
     def list_all(self) -> list[SightingRecord]:
         ids = self._client.zrevrange(BY_TIME_KEY, 0, -1)
+        return self._hydrate(ids)
+
+    def list_since(self, cutoff: datetime) -> list[SightingRecord]:
+        ids = self._client.zrevrangebyscore(BY_TIME_KEY, "+inf", cutoff.timestamp())
+        return self._hydrate(ids)
+
+    def _hydrate(self, ids: list[str]) -> list[SightingRecord]:
         if not ids:
             return []
         keys = [f"{SIGHTING_KEY_PREFIX}{sighting_id}" for sighting_id in ids]

@@ -1,6 +1,7 @@
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.deps import get_store
 from app.models import SightingCreate, SightingRecord
@@ -15,8 +16,14 @@ def create_sighting(payload: SightingCreate, store: SightingStore = Depends(get_
 
 
 @router.get("/sightings", response_model=list[SightingRecord])
-def list_sightings(store: SightingStore = Depends(get_store)) -> list[SightingRecord]:
-    return store.list_all()
+def list_sightings(
+    since_hours: float | None = Query(default=None, gt=0, description="Only return sightings from the last N hours"),
+    store: SightingStore = Depends(get_store),
+) -> list[SightingRecord]:
+    if since_hours is None:
+        return store.list_all()
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+    return store.list_since(cutoff)
 
 
 # No auth yet (see roadmap: OAuth2/OIDC is future work) — once it lands, this route
