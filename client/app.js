@@ -16,6 +16,48 @@ const nowButton = document.getElementById("now-button");
 const sinceHoursFilterInput = document.getElementById("since-hours-filter");
 const clearFilterButton = document.getElementById("clear-filter-button");
 
+// Default view roughly covers the sample data's area (Puget Sound) until real
+// sightings load and fitBounds() takes over.
+const DEFAULT_MAP_CENTER = [47.7262, -122.645];
+const DEFAULT_MAP_ZOOM = 9;
+
+let map;
+let markersLayer;
+
+function initMap() {
+  map = L.map("map").setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  }).addTo(map);
+  markersLayer = L.layerGroup().addTo(map);
+}
+
+function updateMapMarkers(records) {
+  markersLayer.clearLayers();
+
+  const points = [];
+  for (const record of records) {
+    const { sighting } = record;
+    const [lon, lat] = sighting.location.geometry.coordinates;
+    points.push([lat, lon]);
+
+    const when = new Date(sighting.location.geometry.properties.datetime).toLocaleString();
+    const name = sighting.name ? ` (${escapeHtml(sighting.name)})` : "";
+    L.marker([lat, lon])
+      .bindPopup(
+        `<strong>${escapeHtml(sighting.species)}</strong>${name}<br>` +
+        `${escapeHtml(sighting.status)} — ${when}<br>` +
+        `${escapeHtml(sighting.comments ?? "")}`
+      )
+      .addTo(markersLayer);
+  }
+
+  if (points.length > 0) {
+    map.fitBounds(points, { padding: [20, 20], maxZoom: 14 });
+  }
+}
+
 function getCurrentPosition() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
@@ -108,6 +150,7 @@ function renderSightings(records) {
     `;
     sightingsBody.appendChild(row);
   }
+  updateMapMarkers(records);
 }
 
 // Delete is only exposed here for iteration 1 convenience. Once auth exists, this
@@ -210,6 +253,7 @@ sightingsBody.addEventListener("click", async (event) => {
   }
 });
 
+initMap();
 loadSightings().catch((error) => setListStatus(error.message, true));
 populateLocationFields();
 populateDatetimeField();

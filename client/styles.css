@@ -84,6 +84,13 @@ th, td {
   font-style: italic;
 }
 
+.map {
+  height: 400px;
+  width: 100%;
+  margin-top: 1rem;
+  border-radius: 8px;
+}
+
 .delete-button {
   margin-top: 0;
   padding: 0.25rem 0.6rem;
