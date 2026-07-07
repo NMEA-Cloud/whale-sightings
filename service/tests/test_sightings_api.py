@@ -114,3 +114,34 @@ def test_list_sightings_rejects_non_positive_since_hours(client):
     response = client.get("/sightings", params={"since_hours": 0})
 
     assert response.status_code == 422
+
+
+def test_stats_reflects_count_oldest_and_newest(client):
+    older = sample_payload_dict()
+    older["sighting"]["location"]["geometry"]["properties"]["datetime"] = "2026-01-01T00:00:00Z"
+
+    newer = sample_payload_dict()
+    newer["sighting"]["location"]["geometry"]["properties"]["datetime"] = "2026-06-01T00:00:00Z"
+
+    older_id = client.post("/sightings", json=older).json()["id"]
+    newer_id = client.post("/sightings", json=newer).json()["id"]
+
+    response = client.get("/sightings/stats")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 2
+    assert body["oldest"]["id"] == older_id
+    assert body["newest"]["id"] == newer_id
+
+    # Clean up.
+    assert client.delete(f"/sightings/{older_id}").status_code == 204
+    assert client.delete(f"/sightings/{newer_id}").status_code == 204
+
+
+def test_stats_on_empty_store(client):
+    response = client.get("/sightings/stats")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {"count": 0, "oldest": None, "newest": None}

@@ -7,8 +7,9 @@ development today; the service is intended to eventually deploy to AWS.
 ## Project layout
 
 - `service/` — FastAPI application, persists sightings in Valkey, runs in Docker.
-- `client/` — vanilla HTML/CSS/JS client, served by a plain static file server (no build step).
-- `docker-compose.yml` — runs `service` + `valkey` only. The client is intentionally not containerized.
+- `client/` — vanilla HTML/CSS/JS public client, served by a plain static file server (no build step).
+- `admin/` — vanilla HTML/CSS/JS admin client (stats + demo data loading), also static, no build step.
+- `docker-compose.yml` — runs `service` + `valkey` only. Neither client is containerized.
 
 ## Running the service
 
@@ -76,6 +77,12 @@ once OAuth2/OIDC lands, see roadmap below):
 curl -X DELETE http://localhost:8000/sightings/<id>
 ```
 
+Get stats (count, oldest, newest sighting) — used by the admin client:
+
+```bash
+curl http://localhost:8000/sightings/stats
+```
+
 ## Running the client
 
 The client is a static site with no build step, and is not part of `docker-compose.yml`.
@@ -92,6 +99,25 @@ without HTTPS locally — AWS deployment will need HTTPS for Geolocation to keep
 
 `client/app.js` points at the service via a hardcoded `API_BASE` constant — update it if
 the service isn't running on `http://localhost:8000`.
+
+## Running the admin client
+
+The admin client is a separate static site (also no build step) for demo purposes: it
+shows sighting counts plus the oldest/newest sighting, lets you load canned demo data
+with one click, and can clear all sightings to reset between demos. Run it on a
+different port than the public client:
+
+```bash
+cd admin
+python -m http.server 8081
+```
+
+Then open http://localhost:8081. Like the public client, it points at the service via
+a hardcoded `API_BASE` constant in `admin/app.js`. The canned scenarios live in the
+`SCENARIOS` array in that file — edit or add to them for your own demo needs.
+
+This client has no authentication and is not meant to be exposed publicly — see the
+roadmap below.
 
 ## Running the service outside Docker (for development)
 

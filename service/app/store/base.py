@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from uuid import UUID
 
-from app.models import SightingCreate, SightingRecord
+from app.models import SightingCreate, SightingRecord, SightingStats
 
 
 class SightingStore(ABC):
@@ -13,6 +13,10 @@ class SightingStore(ABC):
     @abstractmethod
     def list_all(self) -> list[SightingRecord]:
         """Return all sightings, newest first."""
+
+    @abstractmethod
+    def stats(self) -> SightingStats:
+        """Return the total count plus the oldest and newest sightings by datetime."""
 
     @abstractmethod
     def list_since(self, cutoff: datetime) -> list[SightingRecord]:

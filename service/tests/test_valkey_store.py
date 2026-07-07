@@ -70,6 +70,36 @@ def test_list_since_includes_record_exactly_at_cutoff(store):
     assert [r.id for r in records] == [record.id]
 
 
+def test_stats_on_empty_store(store):
+    stats = store.stats()
+
+    assert stats.count == 0
+    assert stats.oldest is None
+    assert stats.newest is None
+
+
+def test_stats_with_single_record(store):
+    record = store.create(make_payload())
+
+    stats = store.stats()
+
+    assert stats.count == 1
+    assert stats.oldest.id == record.id
+    assert stats.newest.id == record.id
+
+
+def test_stats_with_multiple_records(store):
+    oldest_record = store.create(make_payload(when=datetime(2026, 1, 1, tzinfo=timezone.utc)))
+    store.create(make_payload(when=datetime(2026, 3, 1, tzinfo=timezone.utc)))
+    newest_record = store.create(make_payload(when=datetime(2026, 6, 1, tzinfo=timezone.utc)))
+
+    stats = store.stats()
+
+    assert stats.count == 3
+    assert stats.oldest.id == oldest_record.id
+    assert stats.newest.id == newest_record.id
+
+
 def test_get_returns_none_for_unknown_id(store):
     assert store.get(uuid.uuid4()) is None
 

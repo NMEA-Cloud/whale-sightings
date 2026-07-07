@@ -70,3 +70,9 @@ class SightingRecord(BaseModel):
     sighting: SightingData
     observer: Observer
     images: list[str] = []
+
+
+class SightingStats(BaseModel):
+    count: int
+    oldest: SightingRecord | None
+    newest: SightingRecord | None

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Whale Sightings — Admin</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <h1>Whale Sightings — Admin</h1>
+  <p class="note">
+    This is a demo/admin tool with no authentication yet. It talks directly to the same
+    service as the public client and shouldn't be exposed publicly until OAuth2/OIDC
+    access control exists (see the main README roadmap).
+  </p>
+
+  <section class="panel">
+    <h2>Stats</h2>
+    <button id="refresh-stats-button" type="button">Refresh stats</button>
+    <p id="stats-status" class="status" role="status"></p>
+    <dl class="stats-grid">
+      <dt>Total sightings</dt>
+      <dd id="stat-count">&ndash;</dd>
+      <dt>Oldest sighting</dt>
+      <dd id="stat-oldest">&ndash;</dd>
+      <dt>Newest sighting</dt>
+      <dd id="stat-newest">&ndash;</dd>
+    </dl>
+  </section>
+
+  <section class="panel">
+    <h2>Load demo scenario</h2>
+    <p class="note">Each button posts a canned set of sightings to the service — useful for setting up a specific demo.</p>
+    <div id="scenario-buttons" class="button-row"></div>
+    <p id="scenario-status" class="status" role="status"></p>
+  </section>
+
+  <section class="panel danger-panel">
+    <h2>Clear data</h2>
+    <p class="note">Deletes every sighting currently in the store. Use this to reset between demos.</p>
+    <button id="clear-all-button" type="button" class="danger-button">Clear all sightings</button>
+    <p id="clear-status" class="status" role="status"></p>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>

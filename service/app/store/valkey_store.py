@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 
 from redis import Redis
 
-from app.models import SightingCreate, SightingRecord
+from app.models import SightingCreate, SightingRecord, SightingStats
 from app.store.base import SightingStore
 
 logger = logging.getLogger(__name__)
@@ -53,6 +53,16 @@ class ValkeySightingStore(SightingStore):
     def list_since(self, cutoff: datetime) -> list[SightingRecord]:
         ids = self._client.zrevrangebyscore(BY_TIME_KEY, "+inf", cutoff.timestamp())
         return self._hydrate(ids)
+
+    def stats(self) -> SightingStats:
+        count = self._client.zcard(BY_TIME_KEY)
+        oldest = self._hydrate(self._client.zrange(BY_TIME_KEY, 0, 0))
+        newest = self._hydrate(self._client.zrevrange(BY_TIME_KEY, 0, 0))
+        return SightingStats(
+            count=count,
+            oldest=oldest[0] if oldest else None,
+            newest=newest[0] if newest else None,
+        )
 
     def _hydrate(self, ids: list[str]) -> list[SightingRecord]:
         if not ids:

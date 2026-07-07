@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.deps import get_store
-from app.models import SightingCreate, SightingRecord
+from app.models import SightingCreate, SightingRecord, SightingStats
 from app.store.base import SightingStore
 
 router = APIRouter()
@@ -24,6 +24,13 @@ def list_sightings(
         return store.list_all()
     cutoff = datetime.now(timezone.utc) - timedelta(hours=since_hours)
     return store.list_since(cutoff)
+
+
+# Declared before the "/sightings/{sighting_id}" path param route so a literal
+# "/sightings/stats" is never mistakenly captured as a sighting id.
+@router.get("/sightings/stats", response_model=SightingStats)
+def get_sighting_stats(store: SightingStore = Depends(get_store)) -> SightingStats:
+    return store.stats()
 
 
 # No auth yet (see roadmap: OAuth2/OIDC is future work) — once it lands, this route
