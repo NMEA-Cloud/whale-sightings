@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Whale Sightings</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <h1>Whale Sightings</h1>
+
+  <section class="panel">
+    <h2>Report a sighting</h2>
+    <form id="sighting-form">
+      <label for="status">Status</label>
+      <select id="status" required>
+        <option value="alive">Alive</option>
+        <option value="dead">Dead</option>
+        <option value="distressed">Distressed</option>
+        <option value="unknown">Unknown</option>
+      </select>
+
+      <label for="type">Type</label>
+      <input id="type" type="text" required />
+
+      <label for="species">Species</label>
+      <input id="species" type="text" required />
+
+      <label for="name">Name (optional)</label>
+      <input id="name" type="text" />
+
+      <label for="method">Method</label>
+      <select id="method" required>
+        <option value="manual-report">Manual report</option>
+        <option value="other">Other</option>
+      </select>
+
+      <label for="comments">Comments</label>
+      <textarea id="comments" rows="3"></textarea>
+
+      <button type="submit">Submit sighting</button>
+      <p id="form-status" role="status"></p>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>All sightings</h2>
+    <button id="refresh-button" type="button">Refresh</button>
+    <table id="sightings-table">
+      <thead>
+        <tr>
+          <th>When</th>
+          <th>Species</th>
+          <th>Name</th>
+          <th>Status</th>
+          <th>Method</th>
+          <th>Location</th>
+          <th>Comments</th>
+        </tr>
+      </thead>
+      <tbody id="sightings-body"></tbody>
+    </table>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>
