@@ -11,14 +11,37 @@ development today; the service is intended to eventually deploy to AWS.
 - `admin/` — vanilla HTML/CSS/JS admin client (stats + demo data loading), also static, no build step.
 - `docker-compose.yml` — runs `service` + `valkey` only. Neither client is containerized.
 
+## TLS setup (do this first)
+
+The service only accepts HTTPS — clients and `curl` need a certificate they'll actually
+trust, not a self-signed one that throws warnings. Certs are generated locally with
+[mkcert](https://github.com/FiloSottile/mkcert), which creates a CA and installs it into
+your OS/browser trust stores, then issues a `localhost` cert signed by it. Nothing here is
+committed to git or shared between machines — every developer runs this once:
+
+```bash
+# Install mkcert first if you don't have it: brew install mkcert / choco install mkcert / see the mkcert README
+./scripts/setup-tls.sh    # or scripts/setup-tls.ps1 on Windows PowerShell
+```
+
+This writes `certs/localhost.pem` and `certs/localhost-key.pem` (gitignored). Re-run it any
+time; it's idempotent. `docker-compose.yml` mounts `certs/` into the service container, and
+`uvicorn` (both in Docker and when run directly, see below) is configured to use them.
+
+Browsers trust the result with no warnings. On Windows, `curl` uses the Schannel TLS
+backend, which hard-fails when it can't check a certificate's revocation status — locally
+issued certs have no CRL/OCSP endpoint to check, so plain `curl https://localhost:8000/...`
+will error with `CRYPT_E_NO_REVOCATION_CHECK`. Add `--ssl-no-revoke` to `curl` calls on
+Windows (not needed on macOS/Linux, and not an issue for browsers, which soft-fail instead).
+
 ## Running the service
 
 ```bash
 docker compose up --build
 ```
 
-- Service: http://localhost:8000
-- Health check: `curl http://localhost:8000/health`
+- Service: https://localhost:8000
+- Health check: `curl https://localhost:8000/health`
 - Valkey is exposed on `localhost:6379` for debugging with `valkey-cli`.
 
 ### Example requests
@@ -26,7 +49,7 @@ docker compose up --build
 Create a sighting:
 
 ```bash
-curl -X POST http://localhost:8000/sightings \
+curl -X POST https://localhost:8000/sightings \
   -H "Content-Type: application/json" \
   -d '{
     "sighting": {
@@ -61,33 +84,33 @@ curl -X POST http://localhost:8000/sightings \
 List all sightings (newest first):
 
 ```bash
-curl http://localhost:8000/sightings
+curl https://localhost:8000/sightings
 ```
 
 List sightings from the last N hours (e.g. the last day):
 
 ```bash
-curl "http://localhost:8000/sightings?since_hours=24"
+curl "https://localhost:8000/sightings?since_hours=24"
 ```
 
 List sightings within a radius (nautical miles) of a point — `lat`, `lon`, and
 `radius_nm` must all be given together, and can be combined with `since_hours`:
 
 ```bash
-curl "http://localhost:8000/sightings?lat=47.726&lon=-122.645&radius_nm=10"
+curl "https://localhost:8000/sightings?lat=47.726&lon=-122.645&radius_nm=10"
 ```
 
 Delete a sighting by id (not auth-protected yet — intended for privileged/admin use
 once OAuth2/OIDC lands, see roadmap below):
 
 ```bash
-curl -X DELETE http://localhost:8000/sightings/<id>
+curl -X DELETE https://localhost:8000/sightings/<id>
 ```
 
 Get stats (count, oldest, newest sighting) — used by the admin client:
 
 ```bash
-curl http://localhost:8000/sightings/stats
+curl https://localhost:8000/sightings/stats
 ```
 
 ## Running the client
@@ -111,7 +134,7 @@ latitude/longitude, same as the report form. The list is also plotted on a map
 re-fits itself to whatever sightings are currently loaded whenever the list changes.
 
 `client/app.js` points at the service via a hardcoded `API_BASE` constant — update it if
-the service isn't running on `http://localhost:8000`.
+the service isn't running on `https://localhost:8000`.
 
 ## Running the admin client
 
@@ -140,8 +163,10 @@ python -m venv .venv
 .venv/Scripts/activate  # or source .venv/bin/activate on macOS/Linux
 pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env  # sets VALKEY_HOST=localhost
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --ssl-certfile ../certs/localhost.pem --ssl-keyfile ../certs/localhost-key.pem
 ```
+
+(Requires the [TLS setup](#tls-setup-do-this-first) step above to have been run first.)
 
 ## Running tests
 

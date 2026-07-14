@@ -9,6 +9,9 @@ venv/
 # Env files
 .env
 
+# TLS certs generated locally by scripts/setup-tls.sh (.ps1) — per-machine, never committed
+certs/
+
 # OS / editor
 .DS_Store
 Thumbs.db
