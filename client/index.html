@@ -25,6 +25,7 @@
       <input id="longitude" type="number" step="any" min="-180" max="180" required />
 
       <button id="locate-button" type="button">Use current location</button>
+      <button id="pick-location-button" type="button">Pick on map</button>
 
       <label for="datetime">Date/time</label>
       <input id="datetime" type="datetime-local" step="1" required />
@@ -68,6 +69,16 @@
       <label for="since-hours-filter">Show sightings from the last</label>
       <input id="since-hours-filter" type="number" min="0" step="any" placeholder="e.g. 24" />
       <span>hours (blank = all)</span>
+    </div>
+    <div class="filter-row">
+      <label for="radius-nm-filter">Within</label>
+      <input id="radius-nm-filter" type="number" min="0" step="any" placeholder="e.g. 10" />
+      <span>nautical miles of</span>
+      <input id="radius-lat-filter" type="number" step="any" min="-90" max="90" placeholder="lat" />
+      <input id="radius-lon-filter" type="number" step="any" min="-180" max="180" placeholder="lon" />
+      <button id="locate-filter-button" type="button">Use current location</button>
+      <button id="pick-filter-location-button" type="button">Pick on map</button>
+      <span>(all three fields required, blank = no location filter)</span>
     </div>
     <button id="refresh-button" type="button">Refresh</button>
     <button id="clear-filter-button" type="button">Show all</button>

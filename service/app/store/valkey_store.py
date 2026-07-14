@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 SIGHTING_KEY_PREFIX = "sighting:"
 BY_TIME_KEY = "sightings:by_time"
 GEO_KEY = "sightings:geo"
+NM_TO_KM = 1.852  # international nautical mile
 
 
 class ValkeySightingStore(SightingStore):
@@ -53,6 +54,14 @@ class ValkeySightingStore(SightingStore):
     def list_since(self, cutoff: datetime) -> list[SightingRecord]:
         ids = self._client.zrevrangebyscore(BY_TIME_KEY, "+inf", cutoff.timestamp())
         return self._hydrate(ids)
+
+    def list_within_radius(self, lon: float, lat: float, radius_nm: float) -> list[SightingRecord]:
+        ids = self._client.geosearch(
+            GEO_KEY, longitude=lon, latitude=lat, radius=radius_nm * NM_TO_KM, unit="km"
+        )
+        records = self._hydrate(ids)
+        records.sort(key=lambda r: r.sighting.location.geometry.properties.datetime, reverse=True)
+        return records
 
     def stats(self) -> SightingStats:
         count = self._client.zcard(BY_TIME_KEY)

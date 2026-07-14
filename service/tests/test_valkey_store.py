@@ -118,3 +118,28 @@ def test_delete_removes_record_and_indexes(store, fake_redis_client):
 
 def test_delete_returns_false_for_unknown_id(store):
     assert store.delete(uuid.uuid4()) is False
+
+
+def test_list_within_radius_excludes_far_away_records(store):
+    # ~0.01 degrees of longitude at this latitude is roughly 0.4nm away.
+    nearby_record = store.create(make_payload(lon=-122.655, lat=47.726))
+    # +2 degrees of latitude is roughly 120nm away, well outside a 10nm search.
+    far_record = store.create(make_payload(lon=-122.645, lat=49.726))
+
+    records = store.list_within_radius(lon=-122.645, lat=47.726, radius_nm=10)
+
+    assert [r.id for r in records] == [nearby_record.id]
+    assert far_record.id not in [r.id for r in records]
+
+
+def test_list_within_radius_newest_first(store):
+    older = store.create(
+        make_payload(lon=-122.645, lat=47.726, when=datetime(2026, 1, 1, tzinfo=timezone.utc))
+    )
+    newer = store.create(
+        make_payload(lon=-122.646, lat=47.727, when=datetime(2026, 6, 1, tzinfo=timezone.utc))
+    )
+
+    records = store.list_within_radius(lon=-122.645, lat=47.726, radius_nm=10)
+
+    assert [r.id for r in records] == [newer.id, older.id]

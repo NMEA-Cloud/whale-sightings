@@ -23,6 +23,10 @@ class SightingStore(ABC):
         """Return sightings whose datetime is at or after cutoff, newest first."""
 
     @abstractmethod
+    def list_within_radius(self, lon: float, lat: float, radius_nm: float) -> list[SightingRecord]:
+        """Return sightings within radius_nm nautical miles of (lon, lat), newest first."""
+
+    @abstractmethod
     def get(self, sighting_id: UUID) -> SightingRecord | None:
         """Return a single sighting by id, or None if it doesn't exist."""
 
