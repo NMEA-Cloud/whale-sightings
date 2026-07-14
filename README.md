@@ -70,6 +70,13 @@ List sightings from the last N hours (e.g. the last day):
 curl "http://localhost:8000/sightings?since_hours=24"
 ```
 
+List sightings within a radius (nautical miles) of a point — `lat`, `lon`, and
+`radius_nm` must all be given together, and can be combined with `since_hours`:
+
+```bash
+curl "http://localhost:8000/sightings?lat=47.726&lon=-122.645&radius_nm=10"
+```
+
 Delete a sighting by id (not auth-protected yet — intended for privileged/admin use
 once OAuth2/OIDC lands, see roadmap below):
 
@@ -97,7 +104,9 @@ Then open http://localhost:8080 in a browser. The form auto-fills location/time 
 browser Geolocation API (`http://localhost` is treated as a secure context, so this works
 without HTTPS locally — AWS deployment will need HTTPS for Geolocation to keep working).
 
-The list of sightings can be filtered to the last N hours, and is also plotted on a map
+The list of sightings can be filtered to the last N hours and/or to within a radius (in
+nautical miles) of a point — "Use current location" fills in the radius filter's
+latitude/longitude, same as the report form. The list is also plotted on a map
 (Leaflet + OpenStreetMap tiles, loaded from a CDN) with a pin per sighting — the map
 re-fits itself to whatever sightings are currently loaded whenever the list changes.
 
@@ -177,9 +186,9 @@ This project is being built in stages:
 1. **Done**: collect sightings via a form, persist in Valkey, list all sightings, delete a
    sighting, and show them on a map.
 2. **Done**: filter sightings by time window (`since_hours`, both in the API and the client).
-3. **Current**: filter sightings by location (within Y nautical miles of a point, or
-   within a defined region) — the geo index maintained in the store today exists to
-   make this additive.
+3. **Done**: filter sightings by location — within Y nautical miles of a point
+   (`lat`/`lon`/`radius_nm`, both in the API and the client), composable with the time
+   filter. Filtering within an arbitrary defined region is still future work.
 4. Optionally swap or offer a PostgreSQL storage backend behind the same storage interface.
 5. Add OAuth2 / OpenID Connect authentication, replacing the placeholder observer identity.
 6. Deploy the service to AWS.

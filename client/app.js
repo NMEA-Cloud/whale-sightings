@@ -15,6 +15,12 @@ const datetimeInput = document.getElementById("datetime");
 const nowButton = document.getElementById("now-button");
 const sinceHoursFilterInput = document.getElementById("since-hours-filter");
 const clearFilterButton = document.getElementById("clear-filter-button");
+const radiusNmFilterInput = document.getElementById("radius-nm-filter");
+const radiusLatFilterInput = document.getElementById("radius-lat-filter");
+const radiusLonFilterInput = document.getElementById("radius-lon-filter");
+const locateFilterButton = document.getElementById("locate-filter-button");
+const pickLocationButton = document.getElementById("pick-location-button");
+const pickFilterLocationButton = document.getElementById("pick-filter-location-button");
 
 // Default view roughly covers the sample data's area (Puget Sound) until real
 // sightings load and fitBounds() takes over.
@@ -24,6 +30,23 @@ const DEFAULT_MAP_ZOOM = 9;
 let map;
 let markersLayer;
 
+// Which lat/lon fields the next map click should fill: "form", "filter", or null while inactive.
+let pickTarget = null;
+
+function updatePickButtons() {
+  pickLocationButton.textContent = pickTarget === "form" ? "Click the map..." : "Pick on map";
+  pickLocationButton.classList.toggle("active", pickTarget === "form");
+  pickFilterLocationButton.textContent = pickTarget === "filter" ? "Click the map..." : "Pick on map";
+  pickFilterLocationButton.classList.toggle("active", pickTarget === "filter");
+  map.getContainer().classList.toggle("picking", pickTarget !== null);
+}
+
+// Clicking the same target's button again cancels picking instead of re-arming it.
+function togglePickTarget(target) {
+  pickTarget = pickTarget === target ? null : target;
+  updatePickButtons();
+}
+
 function initMap() {
   map = L.map("map").setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -31,6 +54,21 @@ function initMap() {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
   }).addTo(map);
   markersLayer = L.layerGroup().addTo(map);
+
+  map.on("click", (event) => {
+    if (pickTarget === "form") {
+      latitudeInput.value = event.latlng.lat;
+      longitudeInput.value = event.latlng.lng;
+      setFormStatus("Location set from the map. Edit it above if needed.", false);
+    } else if (pickTarget === "filter") {
+      radiusLatFilterInput.value = event.latlng.lat;
+      radiusLonFilterInput.value = event.latlng.lng;
+    } else {
+      return;
+    }
+    pickTarget = null;
+    updatePickButtons();
+  });
 }
 
 function updateMapMarkers(records) {
@@ -120,9 +158,29 @@ async function loadSightings() {
   setListStatus("", false);
 
   const sinceHours = sinceHoursFilterInput.value;
-  const url = sinceHours
-    ? `${API_BASE}/sightings?since_hours=${encodeURIComponent(sinceHours)}`
-    : `${API_BASE}/sightings`;
+  const radiusNm = radiusNmFilterInput.value;
+  const radiusLat = radiusLatFilterInput.value;
+  const radiusLon = radiusLonFilterInput.value;
+
+  const radiusFields = [radiusNm, radiusLat, radiusLon];
+  const anyRadiusField = radiusFields.some((value) => value !== "");
+  const allRadiusFields = radiusFields.every((value) => value !== "");
+  if (anyRadiusField && !allRadiusFields) {
+    setListStatus("Fill in radius, latitude, and longitude together to filter by location.", true);
+    return;
+  }
+
+  const params = new URLSearchParams();
+  if (sinceHours) {
+    params.set("since_hours", sinceHours);
+  }
+  if (allRadiusFields) {
+    params.set("radius_nm", radiusNm);
+    params.set("lat", radiusLat);
+    params.set("lon", radiusLon);
+  }
+  const query = params.toString();
+  const url = query ? `${API_BASE}/sightings?${query}` : `${API_BASE}/sightings`;
 
   const response = await fetch(url);
   if (!response.ok) {
@@ -226,11 +284,32 @@ refreshButton.addEventListener("click", () => {
 
 clearFilterButton.addEventListener("click", () => {
   sinceHoursFilterInput.value = "";
+  radiusNmFilterInput.value = "";
+  radiusLatFilterInput.value = "";
+  radiusLonFilterInput.value = "";
   loadSightings().catch((error) => setListStatus(error.message, true));
 });
 
 locateButton.addEventListener("click", () => {
   populateLocationFields();
+});
+
+pickLocationButton.addEventListener("click", () => {
+  togglePickTarget("form");
+});
+
+pickFilterLocationButton.addEventListener("click", () => {
+  togglePickTarget("filter");
+});
+
+locateFilterButton.addEventListener("click", async () => {
+  try {
+    const position = await getCurrentPosition();
+    radiusLatFilterInput.value = position.coords.latitude;
+    radiusLonFilterInput.value = position.coords.longitude;
+  } catch (error) {
+    setListStatus(`Could not detect location automatically (${error.message}).`, true);
+  }
 });
 
 nowButton.addEventListener("click", () => {

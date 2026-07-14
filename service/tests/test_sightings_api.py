@@ -139,6 +139,70 @@ def test_stats_reflects_count_oldest_and_newest(client):
     assert client.delete(f"/sightings/{newer_id}").status_code == 204
 
 
+def test_list_sightings_within_radius_excludes_far_away_records(client):
+    nearby = sample_payload_dict()
+    nearby["sighting"]["location"]["geometry"]["coordinates"] = [-122.655, 47.726]
+    nearby["observer"]["location"]["geometry"]["coordinates"] = [-122.655, 47.726]
+
+    far = sample_payload_dict()
+    far["sighting"]["location"]["geometry"]["coordinates"] = [-122.645, 49.726]
+    far["observer"]["location"]["geometry"]["coordinates"] = [-122.645, 49.726]
+
+    nearby_id = client.post("/sightings", json=nearby).json()["id"]
+    far_id = client.post("/sightings", json=far).json()["id"]
+
+    response = client.get("/sightings", params={"lat": 47.726, "lon": -122.645, "radius_nm": 10})
+
+    assert response.status_code == 200
+    assert [r["id"] for r in response.json()] == [nearby_id]
+
+    # Clean up.
+    assert client.delete(f"/sightings/{nearby_id}").status_code == 204
+    assert client.delete(f"/sightings/{far_id}").status_code == 204
+
+
+def test_list_sightings_rejects_partial_location_params(client):
+    response = client.get("/sightings", params={"lat": 47.726})
+
+    assert response.status_code == 400
+
+
+def test_list_sightings_combines_radius_and_since_hours(client):
+    nearby_recent = sample_payload_dict()
+    nearby_recent["sighting"]["location"]["geometry"]["coordinates"] = [-122.655, 47.726]
+    nearby_recent["observer"]["location"]["geometry"]["coordinates"] = [-122.655, 47.726]
+    nearby_recent["sighting"]["location"]["geometry"]["properties"]["datetime"] = (
+        datetime.now(timezone.utc) - timedelta(hours=2)
+    ).isoformat()
+    nearby_recent["observer"]["location"]["geometry"]["properties"]["datetime"] = (
+        datetime.now(timezone.utc) - timedelta(hours=2)
+    ).isoformat()
+
+    nearby_old = sample_payload_dict()
+    nearby_old["sighting"]["location"]["geometry"]["coordinates"] = [-122.655, 47.726]
+    nearby_old["observer"]["location"]["geometry"]["coordinates"] = [-122.655, 47.726]
+    nearby_old["sighting"]["location"]["geometry"]["properties"]["datetime"] = (
+        datetime.now(timezone.utc) - timedelta(hours=100)
+    ).isoformat()
+    nearby_old["observer"]["location"]["geometry"]["properties"]["datetime"] = (
+        datetime.now(timezone.utc) - timedelta(hours=100)
+    ).isoformat()
+
+    recent_id = client.post("/sightings", json=nearby_recent).json()["id"]
+    old_id = client.post("/sightings", json=nearby_old).json()["id"]
+
+    response = client.get(
+        "/sightings", params={"lat": 47.726, "lon": -122.645, "radius_nm": 10, "since_hours": 24}
+    )
+
+    assert response.status_code == 200
+    assert [r["id"] for r in response.json()] == [recent_id]
+
+    # Clean up.
+    assert client.delete(f"/sightings/{recent_id}").status_code == 204
+    assert client.delete(f"/sightings/{old_id}").status_code == 204
+
+
 def test_stats_on_empty_store(client):
     response = client.get("/sightings/stats")
 

@@ -91,6 +91,15 @@ th, td {
   border-radius: 8px;
 }
 
+.map.picking {
+  cursor: crosshair;
+}
+
+button.active {
+  background: #1a1a1a;
+  color: #fff;
+}
+
 .delete-button {
   margin-top: 0;
   padding: 0.25rem 0.6rem;
