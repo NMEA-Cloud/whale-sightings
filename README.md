@@ -43,6 +43,9 @@ docker compose up --build
 - Service: https://localhost:8000
 - Health check: `curl https://localhost:8000/health`
 - Valkey is exposed on `localhost:6379` for debugging with `valkey-cli`.
+- The MQTT broker (Mosquitto) is exposed on `localhost:1883` (plain MQTT, e.g. for
+  `mosquitto_sub`) and `localhost:9001` (MQTT-over-WebSockets, what the browser client
+  uses) — see "Running the client" below.
 
 ### Example requests
 
@@ -133,8 +136,22 @@ latitude/longitude, same as the report form. The list is also plotted on a map
 (Leaflet + OpenStreetMap tiles, loaded from a CDN) with a pin per sighting — the map
 re-fits itself to whatever sightings are currently loaded whenever the list changes.
 
+The list, count, and map also live-refresh automatically: the service publishes to the
+Mosquitto broker whenever any client creates or deletes a sighting, and every open
+client subscribes over MQTT-over-WebSockets (`ws://localhost:9001`) and re-runs its
+current filtered query on each notification. The manual Refresh button still works too.
+
 `client/app.js` points at the service via a hardcoded `API_BASE` constant — update it if
-the service isn't running on `https://localhost:8000`.
+the service isn't running on `https://localhost:8000`. The MQTT broker URL/topic are
+similarly hardcoded as `MQTT_WS_URL`/`MQTT_TOPIC` in the same file.
+
+### Try the live sync
+
+Open `http://localhost:8080` in three browser tabs (or windows), each running the same
+client. Submit a sighting in one tab — the other two update their table, count, and map
+automatically within moments, with no manual refresh. Deleting a sighting in any tab
+updates the others the same way. Filters set in a tab (time window / radius) are still
+respected on each live refresh, same as a manual Refresh.
 
 ## Running the admin client
 

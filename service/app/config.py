@@ -6,6 +6,9 @@ class Settings(BaseSettings):
 
     valkey_host: str = "localhost"
     valkey_port: int = 6379
+    mqtt_host: str = "localhost"
+    mqtt_port: int = 1883
+    mqtt_topic: str = "whale-sightings/updates"
     cors_origins: str = "http://localhost:8080"
 
     @property
