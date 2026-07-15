@@ -3,16 +3,23 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.deps import get_store
+from app.deps import get_mqtt_publisher, get_store
 from app.models import SightingCreate, SightingRecord, SightingStats
+from app.mqtt import MqttPublisher
 from app.store.base import SightingStore
 
 router = APIRouter()
 
 
 @router.post("/sightings", response_model=SightingRecord, status_code=status.HTTP_201_CREATED)
-def create_sighting(payload: SightingCreate, store: SightingStore = Depends(get_store)) -> SightingRecord:
-    return store.create(payload)
+def create_sighting(
+    payload: SightingCreate,
+    store: SightingStore = Depends(get_store),
+    mqtt: MqttPublisher = Depends(get_mqtt_publisher),
+) -> SightingRecord:
+    record = store.create(payload)
+    mqtt.publish("created", str(record.id))
+    return record
 
 
 @router.get("/sightings", response_model=list[SightingRecord])
@@ -58,6 +65,11 @@ def get_sighting_stats(store: SightingStore = Depends(get_store)) -> SightingSta
 # No auth yet (see roadmap: OAuth2/OIDC is future work) — once it lands, this route
 # should be restricted to privileged/admin users rather than left open to any client.
 @router.delete("/sightings/{sighting_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_sighting(sighting_id: UUID, store: SightingStore = Depends(get_store)) -> None:
+def delete_sighting(
+    sighting_id: UUID,
+    store: SightingStore = Depends(get_store),
+    mqtt: MqttPublisher = Depends(get_mqtt_publisher),
+) -> None:
     if not store.delete(sighting_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sighting not found")
+    mqtt.publish("deleted", str(sighting_id))

@@ -48,6 +48,32 @@ def test_create_sighting_returns_201_with_id(client):
     assert client.get("/sightings").json() == []
 
 
+def test_create_sighting_publishes_mqtt_created_event(client, mqtt_publisher):
+    response = client.post("/sightings", json=sample_payload_dict())
+    body = response.json()
+
+    assert mqtt_publisher.calls == [("created", body["id"])]
+
+    client.delete(f"/sightings/{body['id']}")
+
+
+def test_delete_sighting_publishes_mqtt_deleted_event(client, mqtt_publisher):
+    body = client.post("/sightings", json=sample_payload_dict()).json()
+    mqtt_publisher.calls.clear()  # ignore the "created" publish from setup above
+
+    response = client.delete(f"/sightings/{body['id']}")
+
+    assert response.status_code == 204
+    assert mqtt_publisher.calls == [("deleted", body["id"])]
+
+
+def test_failed_delete_does_not_publish(client, mqtt_publisher):
+    response = client.delete("/sightings/00000000-0000-0000-0000-000000000000")
+
+    assert response.status_code == 404
+    assert mqtt_publisher.calls == []
+
+
 def test_create_sighting_rejects_unknown_fields(client):
     payload = sample_payload_dict()
     payload["id"] = "should-not-be-allowed"
