@@ -11,6 +11,21 @@ development today; the service is intended to eventually deploy to AWS.
 - `admin/` — vanilla HTML/CSS/JS admin client (stats + demo data loading), also static, no build step.
 - `docker-compose.yml` — runs `service` + `valkey` only. Neither client is containerized.
 
+## Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) (with Compose) — runs the service, Valkey,
+  and Mosquitto.
+- [mkcert](https://github.com/FiloSottile/mkcert) — issues locally-trusted TLS certs (see
+  [TLS setup](#tls-setup-do-this-first) below).
+- Python 3.9+ on your host machine, as `python3` — used to serve the static clients. Not
+  required to just run everything via `docker compose`; the service itself runs on Python
+  3.12 inside its container regardless of what's installed on the host.
+- Python **3.10+** if you plan to run the service or its tests outside Docker (e.g. for
+  local development in `service/`) — the code uses `X | None` union syntax (PEP 604),
+  which isn't supported on 3.9. On macOS, Apple's bundled `python3` is 3.9, so you'll
+  likely need `brew install python@3.12` (or similar) and create the venv with that
+  binary specifically, e.g. `python3.12 -m venv .venv`.
+
 ## TLS setup (do this first)
 
 The service only accepts HTTPS — clients and `curl` need a certificate they'll actually
@@ -123,7 +138,7 @@ Run it with any static file server, e.g.:
 
 ```bash
 cd client
-python -m http.server 8080
+python3 -m http.server 8080
 ```
 
 Then open http://localhost:8080 in a browser. The form auto-fills location/time via the
@@ -162,7 +177,7 @@ different port than the public client:
 
 ```bash
 cd admin
-python -m http.server 8081
+python3 -m http.server 8081
 ```
 
 Then open http://localhost:8081. Like the public client, it points at the service via
@@ -174,10 +189,13 @@ roadmap below.
 
 ## Running the service outside Docker (for development)
 
+Needs Python 3.10+ (see [Prerequisites](#prerequisites)) — use `python3.10`/`python3.12`/etc.
+in place of `python3` below if that's not what `python3` resolves to on your machine.
+
 ```bash
 cd service
-python -m venv .venv
-.venv/Scripts/activate  # or source .venv/bin/activate on macOS/Linux
+python3 -m venv .venv
+source .venv/bin/activate  # or .venv\Scripts\activate on Windows
 pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env  # sets VALKEY_HOST=localhost
 uvicorn app.main:app --reload --ssl-certfile ../certs/localhost.pem --ssl-keyfile ../certs/localhost-key.pem
@@ -187,8 +205,12 @@ uvicorn app.main:app --reload --ssl-certfile ../certs/localhost.pem --ssl-keyfil
 
 ## Running tests
 
+Also needs Python 3.10+, same as above.
+
 ```bash
 cd service
+python3 -m venv .venv  # skip if you already created one above
+source .venv/bin/activate  # or .venv\Scripts\activate on Windows
 pip install -r requirements.txt -r requirements-dev.txt
 pytest
 ```
