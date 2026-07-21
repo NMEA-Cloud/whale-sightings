@@ -15,6 +15,9 @@
 <body>
   <h1>Whale Sightings</h1>
 
+  <div class="layout">
+  <div class="column-main">
+
   <section class="panel">
     <h2>Report a sighting</h2>
     <form id="sighting-form">
@@ -87,7 +90,6 @@
       Delete is exposed here temporarily. Once auth exists, it will only be available
       via an admin client, not this public one.
     </p>
-    <div id="map" class="map"></div>
     <table id="sightings-table">
       <thead>
         <tr>
@@ -104,6 +106,14 @@
       <tbody id="sightings-body"></tbody>
     </table>
   </section>
+
+  </div>
+
+  <aside class="column-map">
+    <div id="map" class="map"></div>
+  </aside>
+
+  </div>
 
   <script
     src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"

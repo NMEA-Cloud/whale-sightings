@@ -1,9 +1,31 @@
 body {
   font-family: system-ui, sans-serif;
-  max-width: 800px;
+  max-width: 1300px;
   margin: 2rem auto;
   padding: 0 1rem;
   color: #1a1a1a;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 440px);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.column-map {
+  position: sticky;
+  top: 1.5rem;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .column-map {
+    position: static;
+  }
 }
 
 .panel {
@@ -85,10 +107,15 @@ th, td {
 }
 
 .map {
-  height: 400px;
+  height: calc(100vh - 4rem);
   width: 100%;
-  margin-top: 1rem;
   border-radius: 8px;
+}
+
+@media (max-width: 900px) {
+  .map {
+    height: 400px;
+  }
 }
 
 .map.picking {
