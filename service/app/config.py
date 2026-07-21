@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     mqtt_port: int = 1883
     mqtt_topic: str = "whale-sightings/updates"
     cors_origins: str = "http://localhost:8080"
+    # Used to build the resource link published in MQTT messages (see PahoMqttPublisher) —
+    # must be an address subscribers can actually reach, not necessarily where the service
+    # binds internally.
+    public_api_base_url: str = "https://localhost:8000"
 
     @property
     def cors_origin_list(self) -> list[str]:
