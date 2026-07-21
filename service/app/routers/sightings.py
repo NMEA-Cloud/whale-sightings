@@ -62,6 +62,17 @@ def get_sighting_stats(store: SightingStore = Depends(get_store)) -> SightingSta
     return store.stats()
 
 
+@router.get("/sightings/{sighting_id}", response_model=SightingRecord)
+def get_sighting(
+    sighting_id: UUID,
+    store: SightingStore = Depends(get_store),
+) -> SightingRecord:
+    record = store.get(sighting_id)
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sighting not found")
+    return record
+
+
 # No auth yet (see roadmap: OAuth2/OIDC is future work) — once it lands, this route
 # should be restricted to privileged/admin users rather than left open to any client.
 @router.delete("/sightings/{sighting_id}", status_code=status.HTTP_204_NO_CONTENT)

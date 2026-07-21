@@ -72,6 +72,18 @@ th, td {
   font-size: 0.9rem;
 }
 
+.sighting-row td {
+  border-bottom: none;
+  padding-bottom: 0.1rem;
+}
+
+.sighting-id-row td {
+  padding-top: 0;
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: #666;
+}
+
 .status {
   min-height: 1.2rem;
   font-size: 0.9rem;
@@ -98,6 +110,30 @@ th, td {
 
 .filter-row input {
   width: 6rem;
+}
+
+#lookup-id {
+  width: 22rem;
+  font-family: monospace;
+}
+
+.lookup-details {
+  margin-top: 0.75rem;
+}
+
+.lookup-details summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lookup-result {
+  background: #f7f7f7;
+  border-radius: 4px;
+  padding: 0.75rem;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .note {

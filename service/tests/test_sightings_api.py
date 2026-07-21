@@ -106,6 +106,23 @@ def test_list_sightings_newest_first(client):
     assert client.get("/sightings").json() == []
 
 
+def test_get_sighting_returns_record(client):
+    body = client.post("/sightings", json=sample_payload_dict()).json()
+
+    response = client.get(f"/sightings/{body['id']}")
+
+    assert response.status_code == 200
+    assert response.json() == body
+
+    client.delete(f"/sightings/{body['id']}")
+
+
+def test_get_sighting_returns_404_for_unknown_id(client):
+    response = client.get("/sightings/00000000-0000-0000-0000-000000000000")
+
+    assert response.status_code == 404
+
+
 def test_delete_unknown_sighting_returns_404(client):
     response = client.delete("/sightings/00000000-0000-0000-0000-000000000000")
 

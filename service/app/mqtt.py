@@ -18,8 +18,9 @@ class MqttPublisher(ABC):
 
 
 class PahoMqttPublisher(MqttPublisher):
-    def __init__(self, host: str, port: int, topic: str) -> None:
+    def __init__(self, host: str, port: int, topic: str, base_url: str) -> None:
         self._topic = topic
+        self._base_url = base_url.rstrip("/")
         self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         self._client.on_connect = self._on_connect
         self._client.on_disconnect = self._on_disconnect
@@ -41,7 +42,8 @@ class PahoMqttPublisher(MqttPublisher):
         logger.warning("Disconnected from MQTT broker (rc=%s)", reason_code)
 
     def publish(self, event: Event, sighting_id: str) -> None:
-        self._client.publish(self._topic, json.dumps({"event": event, "id": sighting_id}), qos=0)
+        payload = {"event": event, "sighting": f"{self._base_url}/sightings/{sighting_id}"}
+        self._client.publish(self._topic, json.dumps(payload), qos=0)
 
     def close(self) -> None:
         # disconnect() first so a background reconnect-in-progress (e.g. no broker

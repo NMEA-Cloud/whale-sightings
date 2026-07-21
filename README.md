@@ -125,6 +125,12 @@ once OAuth2/OIDC lands, see roadmap below):
 curl -X DELETE https://localhost:8000/sightings/<id>
 ```
 
+Get a single sighting by id:
+
+```bash
+curl https://localhost:8000/sightings/<id>
+```
+
 Get stats (count, oldest, newest sighting) — used by the admin client:
 
 ```bash
