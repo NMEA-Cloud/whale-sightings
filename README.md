@@ -49,6 +49,35 @@ issued certs have no CRL/OCSP endpoint to check, so plain `curl https://localhos
 will error with `CRYPT_E_NO_REVOCATION_CHECK`. Add `--ssl-no-revoke` to `curl` calls on
 Windows (not needed on macOS/Linux, and not an issue for browsers, which soft-fail instead).
 
+### TLS for remote clients
+
+The default cert only covers `localhost`/`127.0.0.1`/`::1`, so a client on another machine
+(pointed at your LAN IP via its `config.js` — see "Running the client" below) will still
+hit a certificate error even once it can reach the service. Two things are needed to fix
+that:
+
+1. **Reissue the cert with your LAN IP as an extra name**, on the machine running the
+   service:
+
+   ```bash
+   ./scripts/setup-tls.sh 192.168.1.23    # use this machine's actual LAN IP
+   ```
+
+2. **Get the other machine to trust your mkcert CA.** Find it with `mkcert -CAROOT`
+   (prints a directory containing `rootCA.pem` and `rootCA-key.pem`). Copy only
+   `rootCA.pem` to the other machine — **never `rootCA-key.pem`**; anyone holding that key
+   can mint certs any of your trusting devices will accept for any domain. On the other
+   machine, either:
+   - install mkcert there too, point `CAROOT` at a directory containing the copied
+     `rootCA.pem`, and run `mkcert -install`, or
+   - import `rootCA.pem` directly into the OS/browser trust store (Keychain Access on
+     macOS, `certmgr`/Group Policy on Windows, `update-ca-certificates` plus each
+     browser's own store on Linux — Firefox in particular keeps its own NSS store
+     separate from the OS).
+
+This only covers the REST API's TLS trust. The service's `CORS_ORIGINS` setting also needs
+the remote client's origin added before it'll accept requests from it — see `.env.example`.
+
 ## Running the service
 
 ```bash
