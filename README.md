@@ -75,8 +75,25 @@ that:
      browser's own store on Linux — Firefox in particular keeps its own NSS store
      separate from the OS).
 
-This only covers the REST API's TLS trust. The service's `CORS_ORIGINS` setting also needs
-the remote client's origin added before it'll accept requests from it — see `.env.example`.
+This only covers the REST API's TLS trust — see "CORS for remote clients" below for the
+other piece.
+
+### CORS for remote clients
+
+Even with a trusted cert, the service will still reject cross-origin requests from a
+remote client until its origin is added to `CORS_ORIGINS`. Which file to edit depends on
+how you're running the service:
+
+- **Via Docker (the default — `docker compose up --build`):** edit `CORS_ORIGINS` directly
+  in `docker-compose.yml`. It does **not** read `.env`.
+- **Running the service directly (see "Running the service outside Docker" below):** edit
+  `CORS_ORIGINS` in your `.env` file instead.
+
+Either way, add the remote client's actual origin (scheme + host + port it's served from),
+e.g. `http://192.168.1.23:8080`, as an extra comma-separated entry alongside the existing
+`http://localhost:8080,http://localhost:8081`. If you're running the service via Docker,
+remember it needs a rebuild (`docker compose up --build`) to pick up the change, same as
+any other edit to `docker-compose.yml`.
 
 ## Running the service
 
