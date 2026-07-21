@@ -8,6 +8,8 @@ venv/
 
 # Env files
 .env
+client/config.js
+admin/config.js
 
 # TLS certs generated locally by scripts/setup-tls.sh (.ps1) — per-machine, never committed
 certs/

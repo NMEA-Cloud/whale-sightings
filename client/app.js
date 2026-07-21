@@ -1,11 +1,14 @@
-// Update this if the service isn't running on https://localhost:8000 (e.g. after AWS deployment).
-// The service is TLS-only — run scripts/setup-tls.sh (or .ps1) once so this cert is trusted.
-const API_BASE = "https://localhost:8000";
+// Overridable via config.js (copy config.example.js — see README) for pointing this
+// client at a service on another machine. Falls back to localhost if config.js isn't
+// present. The service is TLS-only — run scripts/setup-tls.sh (or .ps1) once so
+// whatever cert it serves is trusted.
+const config = window.WHALE_SIGHTINGS_CONFIG ?? {};
+const API_BASE = config.apiBase ?? "https://localhost:8000";
 
 // The service publishes here on every sighting create/delete, so any open tab can
 // live-refresh its list. Plain ws:// is fine — this client is itself served over plain
 // http, so there's no mixed-content restriction to work around.
-const MQTT_WS_URL = "ws://localhost:9001";
+const MQTT_WS_URL = config.mqttWsUrl ?? "ws://localhost:9001";
 const MQTT_TOPIC = "whale-sightings/updates";
 
 const OBSERVER_ID_PLACEHOLDER = "https://example.org/users/anonymous-observer";

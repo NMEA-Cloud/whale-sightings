@@ -162,9 +162,11 @@ Mosquitto broker whenever any client creates or deletes a sighting, and every op
 client subscribes over MQTT-over-WebSockets (`ws://localhost:9001`) and re-runs its
 current filtered query on each notification. The manual Refresh button still works too.
 
-`client/app.js` points at the service via a hardcoded `API_BASE` constant — update it if
-the service isn't running on `https://localhost:8000`. The MQTT broker URL/topic are
-similarly hardcoded as `MQTT_WS_URL`/`MQTT_TOPIC` in the same file.
+The client points at the service via `API_BASE` (and the MQTT broker via `MQTT_WS_URL`),
+both defined in `client/app.js` with `https://localhost:8000` / `ws://localhost:9001` as
+the defaults. To point this client at a service running elsewhere (e.g. on another
+machine on your network), copy `client/config.example.js` to `client/config.js`
+(gitignored, like `.env`) and edit the values there — no need to touch `app.js` itself.
 
 ### Try the live sync
 
@@ -187,8 +189,10 @@ python3 -m http.server 8081
 ```
 
 Then open http://localhost:8081. Like the public client, it points at the service via
-a hardcoded `API_BASE` constant in `admin/app.js`. The canned scenarios live in the
-`SCENARIOS` array in that file — edit or add to them for your own demo needs.
+`API_BASE` in `admin/app.js` (defaulting to `https://localhost:8000`), overridable the
+same way — copy `admin/config.example.js` to `admin/config.js` and edit it. The canned
+scenarios live in the `SCENARIOS` array in `admin/app.js` — edit or add to them for your
+own demo needs.
 
 This client has no authentication and is not meant to be exposed publicly — see the
 roadmap below.
