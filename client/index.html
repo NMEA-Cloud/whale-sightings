@@ -67,6 +67,20 @@
   </section>
 
   <section class="panel">
+    <h2>Look up a sighting</h2>
+    <div class="filter-row">
+      <button id="lookup-button" type="button">Look up</button>
+      <label for="lookup-id">Sighting ID</label>
+      <input id="lookup-id" type="text" placeholder="uuid" />
+    </div>
+    <p id="lookup-status" class="status" role="status"></p>
+    <details id="lookup-details" class="lookup-details" hidden>
+      <summary>Sighting details</summary>
+      <pre id="lookup-result" class="lookup-result"></pre>
+    </details>
+  </section>
+
+  <section class="panel">
     <h2>All sightings</h2>
     <div class="filter-row">
       <label for="since-hours-filter">Show sightings from the last</label>

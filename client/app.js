@@ -13,6 +13,11 @@ const OBSERVER_ID_PLACEHOLDER = "https://example.org/users/anonymous-observer";
 const form = document.getElementById("sighting-form");
 const formStatus = document.getElementById("form-status");
 const listStatus = document.getElementById("list-status");
+const lookupIdInput = document.getElementById("lookup-id");
+const lookupButton = document.getElementById("lookup-button");
+const lookupStatus = document.getElementById("lookup-status");
+const lookupDetails = document.getElementById("lookup-details");
+const lookupResult = document.getElementById("lookup-result");
 const refreshButton = document.getElementById("refresh-button");
 const sightingsBody = document.getElementById("sightings-body");
 const latitudeInput = document.getElementById("latitude");
@@ -178,6 +183,40 @@ function setListStatus(message, isError) {
   listStatus.className = `status ${isError ? "error" : "success"}`;
 }
 
+function setLookupStatus(message, isError) {
+  lookupStatus.textContent = message;
+  lookupStatus.className = `status ${isError ? "error" : "success"}`;
+}
+
+async function lookupSighting() {
+  const id = lookupIdInput.value.trim();
+  lookupDetails.hidden = true;
+  lookupResult.textContent = "";
+  if (!id) {
+    setLookupStatus("Enter a sighting ID.", true);
+    return;
+  }
+
+  setLookupStatus("Looking up...", false);
+  try {
+    const response = await fetch(`${API_BASE}/sightings/${id}`);
+    if (response.status === 404) {
+      setLookupStatus("No sighting found with that ID.", true);
+      return;
+    }
+    if (!response.ok) {
+      throw new Error(`Lookup failed (${response.status})`);
+    }
+    const record = await response.json();
+    setLookupStatus("", false);
+    lookupResult.textContent = JSON.stringify(record, null, 2);
+    lookupDetails.hidden = false;
+    lookupDetails.open = true;
+  } catch (error) {
+    setLookupStatus(error.message, true);
+  }
+}
+
 async function loadSightings() {
   // Clear any error from a previous load attempt so it doesn't linger after this one succeeds.
   setListStatus("", false);
@@ -221,6 +260,7 @@ function renderSightings(records) {
     const { sighting } = record;
     const [lon, lat] = sighting.location.geometry.coordinates;
     const row = document.createElement("tr");
+    row.className = "sighting-row";
     row.innerHTML = `
       <td>${new Date(sighting.location.geometry.properties.datetime).toLocaleString()}</td>
       <td>${escapeHtml(sighting.species)}</td>
@@ -232,6 +272,11 @@ function renderSightings(records) {
       <td><button class="delete-button" data-id="${record.id}" type="button">Delete</button></td>
     `;
     sightingsBody.appendChild(row);
+
+    const idRow = document.createElement("tr");
+    idRow.className = "sighting-id-row";
+    idRow.innerHTML = `<td colspan="8">ID: ${escapeHtml(record.id)}</td>`;
+    sightingsBody.appendChild(idRow);
   }
   updateMapMarkers(records);
 }
@@ -293,6 +338,9 @@ form.addEventListener("submit", async (event) => {
       throw new Error(`Submit failed (${response.status}): ${detail}`);
     }
 
+    const created = await response.json();
+    lookupIdInput.value = created.id;
+
     form.reset();
     setFormStatus("Sighting submitted.", false);
     await loadSightings().catch((error) => setListStatus(error.message, true));
@@ -305,6 +353,10 @@ form.addEventListener("submit", async (event) => {
 
 refreshButton.addEventListener("click", () => {
   loadSightings().catch((error) => setListStatus(error.message, true));
+});
+
+lookupButton.addEventListener("click", () => {
+  lookupSighting();
 });
 
 clearFilterButton.addEventListener("click", () => {
