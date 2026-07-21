@@ -10,6 +10,7 @@ venv/
 .env
 client/config.js
 admin/config.js
+docker-compose.override.yml
 
 # TLS certs generated locally by scripts/setup-tls.sh (.ps1) — per-machine, never committed
 certs/
