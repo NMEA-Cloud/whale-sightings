@@ -95,6 +95,14 @@ e.g. `http://192.168.1.23:8080`, as an extra comma-separated entry alongside the
 remember it needs a rebuild (`docker compose up --build`) to pick up the change, same as
 any other edit to `docker-compose.yml`.
 
+If you want to allow clients from anywhere on a LAN subnet rather than enumerating each
+machine's IP, set `CORS_ORIGIN_REGEX` instead (or in addition) — it's matched against the
+`Origin` header alongside `CORS_ORIGINS`, e.g.:
+
+```
+CORS_ORIGIN_REGEX=^http://192\.168\.0\.\d{1,3}:(8080|8081)$
+```
+
 ## Running the service
 
 ```bash
