@@ -1,6 +1,8 @@
-// Update this if the service isn't running on https://localhost:8000 (e.g. after AWS deployment).
-// The service is TLS-only — run scripts/setup-tls.sh (or .ps1) once so this cert is trusted.
-const API_BASE = "https://localhost:8000";
+// Overridable via config.js (copy config.example.js — see README) for pointing this
+// client at a service on another machine. Falls back to localhost if config.js isn't
+// present. The service is TLS-only — run scripts/setup-tls.sh (or .ps1) once so
+// whatever cert it serves is trusted.
+const API_BASE = window.WHALE_SIGHTINGS_CONFIG?.apiBase ?? "https://localhost:8000";
 
 const OBSERVER_ID_PLACEHOLDER = "https://example.org/users/anonymous-observer";
 

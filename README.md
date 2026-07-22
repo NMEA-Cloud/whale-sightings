@@ -49,6 +49,60 @@ issued certs have no CRL/OCSP endpoint to check, so plain `curl https://localhos
 will error with `CRYPT_E_NO_REVOCATION_CHECK`. Add `--ssl-no-revoke` to `curl` calls on
 Windows (not needed on macOS/Linux, and not an issue for browsers, which soft-fail instead).
 
+### TLS for remote clients
+
+The default cert only covers `localhost`/`127.0.0.1`/`::1`, so a client on another machine
+(pointed at your LAN IP via its `config.js` — see "Running the client" below) will still
+hit a certificate error even once it can reach the service. Two things are needed to fix
+that:
+
+1. **Reissue the cert with your LAN IP as an extra name**, on the machine running the
+   service:
+
+   ```bash
+   ./scripts/setup-tls.sh 192.168.1.23    # use this machine's actual LAN IP
+   ```
+
+2. **Get the other machine to trust your mkcert CA.** Find it with `mkcert -CAROOT`
+   (prints a directory containing `rootCA.pem` and `rootCA-key.pem`). Copy only
+   `rootCA.pem` to the other machine — **never `rootCA-key.pem`**; anyone holding that key
+   can mint certs any of your trusting devices will accept for any domain. On the other
+   machine, either:
+   - install mkcert there too, point `CAROOT` at a directory containing the copied
+     `rootCA.pem`, and run `mkcert -install`, or
+   - import `rootCA.pem` directly into the OS/browser trust store (Keychain Access on
+     macOS, `certmgr`/Group Policy on Windows, `update-ca-certificates` plus each
+     browser's own store on Linux — Firefox in particular keeps its own NSS store
+     separate from the OS).
+
+This only covers the REST API's TLS trust — see "CORS for remote clients" below for the
+other piece.
+
+### CORS for remote clients
+
+Even with a trusted cert, the service will still reject cross-origin requests from a
+remote client until its origin is added to `CORS_ORIGINS`. Which file to edit depends on
+how you're running the service:
+
+- **Via Docker (the default — `docker compose up --build`):** edit `CORS_ORIGINS` directly
+  in `docker-compose.yml`. It does **not** read `.env`.
+- **Running the service directly (see "Running the service outside Docker" below):** edit
+  `CORS_ORIGINS` in your `.env` file instead.
+
+Either way, add the remote client's actual origin (scheme + host + port it's served from),
+e.g. `http://192.168.1.23:8080`, as an extra comma-separated entry alongside the existing
+`http://localhost:8080,http://localhost:8081`. If you're running the service via Docker,
+remember it needs a rebuild (`docker compose up --build`) to pick up the change, same as
+any other edit to `docker-compose.yml`.
+
+If you want to allow clients from anywhere on a LAN subnet rather than enumerating each
+machine's IP, set `CORS_ORIGIN_REGEX` instead (or in addition) — it's matched against the
+`Origin` header alongside `CORS_ORIGINS`, e.g.:
+
+```
+CORS_ORIGIN_REGEX=^http://192\.168\.0\.\d{1,3}:(8080|8081)$
+```
+
 ## Running the service
 
 ```bash
@@ -162,9 +216,11 @@ Mosquitto broker whenever any client creates or deletes a sighting, and every op
 client subscribes over MQTT-over-WebSockets (`ws://localhost:9001`) and re-runs its
 current filtered query on each notification. The manual Refresh button still works too.
 
-`client/app.js` points at the service via a hardcoded `API_BASE` constant — update it if
-the service isn't running on `https://localhost:8000`. The MQTT broker URL/topic are
-similarly hardcoded as `MQTT_WS_URL`/`MQTT_TOPIC` in the same file.
+The client points at the service via `API_BASE` (and the MQTT broker via `MQTT_WS_URL`),
+both defined in `client/app.js` with `https://localhost:8000` / `ws://localhost:9001` as
+the defaults. To point this client at a service running elsewhere (e.g. on another
+machine on your network), copy `client/config.example.js` to `client/config.js`
+(gitignored, like `.env`) and edit the values there — no need to touch `app.js` itself.
 
 ### Try the live sync
 
@@ -187,8 +243,10 @@ python3 -m http.server 8081
 ```
 
 Then open http://localhost:8081. Like the public client, it points at the service via
-a hardcoded `API_BASE` constant in `admin/app.js`. The canned scenarios live in the
-`SCENARIOS` array in that file — edit or add to them for your own demo needs.
+`API_BASE` in `admin/app.js` (defaulting to `https://localhost:8000`), overridable the
+same way — copy `admin/config.example.js` to `admin/config.js` and edit it. The canned
+scenarios live in the `SCENARIOS` array in `admin/app.js` — edit or add to them for your
+own demo needs.
 
 This client has no authentication and is not meant to be exposed publicly — see the
 roadmap below.
