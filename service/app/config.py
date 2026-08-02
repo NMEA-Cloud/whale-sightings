@@ -18,6 +18,26 @@ class Settings(BaseSettings):
     # must be an address subscribers can actually reach, not necessarily where the service
     # binds internally.
     public_api_base_url: str = "https://localhost:8000"
+    # The only setting that changes if the OAuth2 authorization server (Ory Hydra) relocates
+    # to a different LAN machine — mirrors the public_api_base_url pattern above. This is the
+    # AS's public identity: it's checked against the "iss" claim on every token and published
+    # in the RFC 9728 resource-metadata doc, so it must be the same address browsers use.
+    oauth_issuer_url: str = "https://localhost:4444"
+    # Where this container itself fetches the JWKS keyset from, when that differs from
+    # oauth_issuer_url. Only needed for the default docker-compose.yml topology, where
+    # hydra's browser-facing issuer is "localhost" (meaningless from inside another
+    # container) but it's reachable from here as "hydra" on the Docker network. Falls back
+    # to oauth_issuer_url when unset — which is what a relocated AS at a real LAN address
+    # should do, since that address is reachable from both the browser and this container.
+    # Never needs to change on relocation; oauth_issuer_url remains the only knob for that.
+    oauth_jwks_url: str | None = None
+    # Expected "aud" claim on access tokens — matches public_api_base_url by convention,
+    # since that's the resource these tokens are scoped to.
+    oauth_expected_audience: str = "https://localhost:8000"
+    # Trusted for both the oauth_jwks_url fetch above and, if set, for a relocated AS on a
+    # different machine whose TLS cert is signed by a CA this container doesn't already
+    # trust — see the README's cross-machine TLS setup.
+    oauth_ca_bundle_path: str | None = None
 
     @property
     def cors_origin_list(self) -> list[str]:

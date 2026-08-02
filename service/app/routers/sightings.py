@@ -3,6 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from app.auth import require_admin
 from app.deps import get_mqtt_publisher, get_store
 from app.models import SightingCreate, SightingRecord, SightingStats
 from app.mqtt import MqttPublisher
@@ -73,13 +74,13 @@ def get_sighting(
     return record
 
 
-# No auth yet (see roadmap: OAuth2/OIDC is future work) — once it lands, this route
-# should be restricted to privileged/admin users rather than left open to any client.
+# Admin-only — see app/auth.py. Every other route in this file stays open to any client.
 @router.delete("/sightings/{sighting_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_sighting(
     sighting_id: UUID,
     store: SightingStore = Depends(get_store),
     mqtt: MqttPublisher = Depends(get_mqtt_publisher),
+    _claims: dict = Depends(require_admin),
 ) -> None:
     if not store.delete(sighting_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sighting not found")

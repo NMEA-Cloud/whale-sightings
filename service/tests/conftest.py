@@ -2,6 +2,7 @@ import fakeredis
 import pytest
 from fastapi.testclient import TestClient
 
+from app.auth import require_admin
 from app.deps import get_mqtt_publisher, get_store
 from app.main import create_app
 from app.mqtt import MqttPublisher
@@ -38,6 +39,9 @@ def client(store, mqtt_publisher):
     app = create_app()
     app.dependency_overrides[get_store] = lambda: store
     app.dependency_overrides[get_mqtt_publisher] = lambda: mqtt_publisher
+    # Auth is exercised on its own in test_auth.py — every other test in this suite predates
+    # auth and shouldn't need a real token just to call DELETE.
+    app.dependency_overrides[require_admin] = lambda: {"sub": "test-admin", "ext": {"role": "admin"}}
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
