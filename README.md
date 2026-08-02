@@ -9,7 +9,10 @@ development today; the service is intended to eventually deploy to AWS.
 - `service/` — FastAPI application, persists sightings in Valkey, runs in Docker.
 - `client/` — vanilla HTML/CSS/JS public client, served by a plain static file server (no build step).
 - `admin/` — vanilla HTML/CSS/JS admin client (stats + demo data loading), also static, no build step.
-- `docker-compose.yml` — runs `service` + `valkey` only. Neither client is containerized.
+- `hydra/` — config for the self-hosted Ory Hydra OAuth2 authorization server.
+- `login-consent/` — small FastAPI app serving Hydra's login/consent screens.
+- `docker-compose.yml` — runs `service`, `valkey`, `mqtt`, `hydra`, and `login-consent`.
+  Neither client is containerized.
 
 ## Prerequisites
 
@@ -172,11 +175,12 @@ List sightings within a radius (nautical miles) of a point — `lat`, `lon`, and
 curl "https://localhost:8000/sightings?lat=47.726&lon=-122.645&radius_nm=10"
 ```
 
-Delete a sighting by id (not auth-protected yet — intended for privileged/admin use
-once OAuth2/OIDC lands, see roadmap below):
+Delete a sighting by id — requires an admin bearer token (see "OAuth2 login for the admin
+client" below); a plain unauthenticated request gets a `401`:
 
 ```bash
-curl -X DELETE https://localhost:8000/sightings/<id>
+curl -X DELETE https://localhost:8000/sightings/<id> \
+  -H "Authorization: Bearer <access token>"
 ```
 
 Get a single sighting by id:
@@ -248,8 +252,38 @@ same way — copy `admin/config.example.js` to `admin/config.js` and edit it. Th
 scenarios live in the `SCENARIOS` array in `admin/app.js` — edit or add to them for your
 own demo needs.
 
-This client has no authentication and is not meant to be exposed publicly — see the
-roadmap below.
+Deleting sightings (individually or via "Clear all sightings") requires signing in — see
+the next section. Stats and demo-data loading don't; those stay open to any client, same
+as the public client.
+
+## OAuth2 login for the admin client
+
+`docker-compose.yml` also runs a self-hosted Ory Hydra (the OAuth2 authorization server)
+plus a small `login-consent` app for its login screen — both come up with everything else
+via `docker compose up --build`. One extra one-time step registers the admin client with
+Hydra:
+
+```bash
+./scripts/register-hydra-client.sh
+```
+
+Safe to re-run any time; it deletes and re-creates the client. Re-run it if you change
+where the admin client or the service is served from (pass the admin origin and API base
+as arguments — see the script's header comment), same idea as re-running `setup-tls.sh`
+after a LAN IP changes.
+
+With that done, clicking "Clear all sightings" in the admin client with no active session
+redirects to a login screen (`admin`/`change-me` by default — see `ADMIN_USERNAME`/
+`ADMIN_PASSWORD` in `docker-compose.yml`), then redirects back once you're signed in. The
+delete you clicked is **not** retried automatically — click it again once you're back,
+and it succeeds this time. This two-step flow is deliberate: it's what makes the
+authorization boundary visible in a demo, rather than hiding it behind an automatic retry.
+
+The access token lives only in an in-memory JS variable in the admin client (never
+`localStorage`/`sessionStorage`), so a page reload loses it and the next delete attempt
+repeats the login redirect. The public client's delete button is intentionally left
+unauthenticated — clicking it still sends a plain `DELETE` with no token, which now gets
+rejected with a `401`, demonstrating that only the admin client can actually delete.
 
 ## Running the service outside Docker (for development)
 
@@ -318,5 +352,8 @@ This project is being built in stages:
    (`lat`/`lon`/`radius_nm`, both in the API and the client), composable with the time
    filter. Filtering within an arbitrary defined region is still future work.
 4. Optionally swap or offer a PostgreSQL storage backend behind the same storage interface.
-5. Add OAuth2 / OpenID Connect authentication, replacing the placeholder observer identity.
+5. **Done (partial)**: OAuth2/OIDC via a self-hosted Ory Hydra now gates
+   `DELETE /sightings/{id}` to admin-only (see "OAuth2 login for the admin client" above).
+   The public client's `POST`/observer identity is untouched — replacing the placeholder
+   observer id with an authenticated identity is still future work.
 6. Deploy the service to AWS.
