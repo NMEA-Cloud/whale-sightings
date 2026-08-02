@@ -30,7 +30,14 @@ mkcert is not installed. Install it, then re-run this script:
 mkcert -install
 
 New-Item -ItemType Directory -Force -Path certs | Out-Null
-mkcert -cert-file certs/localhost.pem -key-file certs/localhost-key.pem localhost 127.0.0.1 "::1" @ExtraNames
+# "hydra" is always included: it's the fixed Docker-network hostname login-consent uses to
+# reach Hydra's admin API (docker-compose.yml's service name for it), not a per-machine value.
+mkcert -cert-file certs/localhost.pem -key-file certs/localhost-key.pem localhost 127.0.0.1 "::1" hydra @ExtraNames
+
+# Also copy the CA cert (not the key) itself, so containers that need to make outbound TLS
+# calls to another mkcert-issued endpoint on the Docker network (e.g. login-consent calling
+# Hydra's admin API) can trust it without disabling verification.
+Copy-Item (Join-Path (mkcert -CAROOT) "rootCA.pem") certs/rootCA.pem
 
 Write-Host ""
 Write-Host "TLS cert written to certs/. Run 'docker compose up --build' to pick it up."

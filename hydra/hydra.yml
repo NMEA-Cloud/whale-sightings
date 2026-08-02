@@ -1,0 +1,53 @@
+# Config for the `hydra` service in docker-compose.yml (mounted read-only at
+# /etc/config/hydra/hydra.yml). See scripts/register-hydra-client.sh for registering the
+# admin client against this instance, and the README's OAuth2 section for the full flow.
+#
+# urls.self.issuer / urls.login / urls.consent are the three values that change if the
+# authorization server moves to a different LAN machine — docker-compose.yml overrides them
+# via URLS_SELF_ISSUER/URLS_LOGIN/URLS_CONSENT env vars rather than editing this file, so a
+# relocation only touches docker-compose.yml (or an override file), not this checked-in config.
+
+serve:
+  tls:
+    enabled: true
+    cert:
+      path: /certs/localhost.pem
+    key:
+      path: /certs/localhost-key.pem
+  public:
+    cors:
+      enabled: true
+      allowed_origins:
+        - http://localhost:8081
+      allowed_methods:
+        - GET
+        - POST
+      allowed_headers:
+        - Authorization
+        - Content-Type
+      exposed_headers:
+        - Content-Type
+
+urls:
+  self:
+    issuer: https://localhost:4444
+  login: https://localhost:4446/login
+  consent: https://localhost:4446/consent
+
+# Dev-only placeholder — this file is committed, so this is intentionally the well-known
+# value from Ory's own quickstart examples, not a real secret. Regenerate with
+# `openssl rand -hex 32` and set it via the SECRETS_SYSTEM env var (never edit this file in
+# place) before running this anywhere beyond a local/LAN reference deployment.
+secrets:
+  system:
+    - youReallyNeedToChangeThis
+
+strategies:
+  access_token: jwt
+
+ttl:
+  access_token: 15m
+
+oauth2:
+  pkce:
+    enforced_for_public_clients: true

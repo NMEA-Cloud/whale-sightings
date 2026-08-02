@@ -41,3 +41,67 @@ services:
         condition: service_healthy
       mqtt:
         condition: service_healthy
+
+  # --- OAuth2 authorization server (Ory Hydra) + its login/consent UI ---
+  #
+  # hydra-sqlite-init -> hydra-migrate -> hydra, in that order. All four hydra* services
+  # below (and login-consent, which they call back into) are optional infrastructure for the
+  # admin client's login; `service` and the public client work fine without them.
+
+  hydra-sqlite-init:
+    image: busybox
+    command: sh -c "mkdir -p /mnt/sqlite && chown -R 65532:65532 /mnt/sqlite"
+    volumes:
+      - hydra-sqlite:/mnt/sqlite
+
+  hydra-migrate:
+    image: oryd/hydra:v26.2.0
+    environment:
+      DSN: sqlite:///mnt/sqlite/db.sqlite?_fk=true&mode=rwc
+      SECRETS_SYSTEM: youReallyNeedToChangeThis
+    command: migrate -c /etc/config/hydra/hydra.yml sql up -e --yes
+    volumes:
+      - hydra-sqlite:/mnt/sqlite
+      - ./hydra:/etc/config/hydra:ro
+    depends_on:
+      hydra-sqlite-init:
+        condition: service_completed_successfully
+
+  hydra:
+    image: oryd/hydra:v26.2.0
+    ports:
+      - "4444:4444" # public: authorization/token endpoints, discovery docs
+      - "4445:4445" # admin: login/consent request management (login-consent talks to this)
+    environment:
+      DSN: sqlite:///mnt/sqlite/db.sqlite?_fk=true&mode=rwc
+      SECRETS_SYSTEM: youReallyNeedToChangeThis
+      # The three values that change if this AS relocates to a different LAN machine.
+      URLS_SELF_ISSUER: https://localhost:4444
+      URLS_LOGIN: https://localhost:4446/login
+      URLS_CONSENT: https://localhost:4446/consent
+    command: serve -c /etc/config/hydra/hydra.yml all
+    volumes:
+      - hydra-sqlite:/mnt/sqlite
+      - ./hydra:/etc/config/hydra:ro
+      - ./certs:/certs:ro
+    depends_on:
+      hydra-migrate:
+        condition: service_completed_successfully
+
+  login-consent:
+    build: ./login-consent
+    ports:
+      - "4446:4446"
+    environment:
+      HYDRA_ADMIN_URL: https://hydra:4445
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: change-me
+    volumes:
+      # certs/rootCA.pem (written by scripts/setup-tls.sh) lets this container's outbound
+      # calls to https://hydra:4445 trust Hydra's mkcert-issued cert.
+      - ./certs:/certs:ro
+    depends_on:
+      - hydra
+
+volumes:
+  hydra-sqlite:
