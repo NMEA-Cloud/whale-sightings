@@ -40,7 +40,10 @@ def _login_page(login_challenge: str, error: str | None = None) -> str:
 def get_login(login_challenge: str) -> HTMLResponse:
     login_request = app.state.hydra.get_login_request(login_challenge)
     if login_request.get("skip"):
-        result = app.state.hydra.accept_login_request(login_challenge, subject=login_request["subject"])
+        settings = get_settings()
+        result = app.state.hydra.accept_login_request(
+            login_challenge, subject=login_request["subject"], remember_for=settings.login_remember_seconds
+        )
         return RedirectResponse(result["redirect_to"], status_code=302)
     return HTMLResponse(_login_page(login_challenge))
 
@@ -51,7 +54,9 @@ def post_login(
 ) -> HTMLResponse:
     settings = get_settings()
     if username == settings.admin_username and password == settings.admin_password:
-        result = app.state.hydra.accept_login_request(login_challenge, subject=username)
+        result = app.state.hydra.accept_login_request(
+            login_challenge, subject=username, remember_for=settings.login_remember_seconds
+        )
         return RedirectResponse(result["redirect_to"], status_code=302)
 
     app.state.hydra.reject_login_request(login_challenge)

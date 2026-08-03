@@ -17,11 +17,11 @@ class HydraAdminClient:
         response.raise_for_status()
         return response.json()
 
-    def accept_login_request(self, challenge: str, subject: str) -> dict:
+    def accept_login_request(self, challenge: str, subject: str, remember_for: int) -> dict:
         response = self._client.put(
             "/admin/oauth2/auth/requests/login/accept",
             params={"login_challenge": challenge},
-            json={"subject": subject, "remember": True, "remember_for": 3600},
+            json={"subject": subject, "remember": True, "remember_for": remember_for},
         )
         response.raise_for_status()
         return response.json()

@@ -285,6 +285,25 @@ repeats the login redirect. The public client's delete button is intentionally l
 unauthenticated — clicking it still sends a plain `DELETE` with no token, which now gets
 rejected with a `401`, demonstrating that only the admin client can actually delete.
 
+### Forcing a fresh login for a demo
+
+Reloading the admin page clears its in-memory token, but Hydra itself also remembers a
+successful login for `LOGIN_REMEMBER_SECONDS` (`login-consent`'s setting in
+`docker-compose.yml`, defaults to `3600` = 1 hour). Within that window, a reload-then-click
+still redirects through Hydra, but Hydra replies `skip: true` and `login-consent`
+auto-accepts — so the delete works, but you never see the login form itself, which makes
+for a less convincing demo.
+
+To force the actual form to reappear immediately, revoke the remembered session directly:
+
+```bash
+curl -sk -X DELETE "https://localhost:4445/admin/oauth2/auth/sessions/login?subject=admin"
+```
+
+Or lower `LOGIN_REMEMBER_SECONDS` in `docker-compose.yml` (e.g. to `60`) if you'd rather
+the form reappear on its own shortly after each login, without running that command every
+time.
+
 ## Running the service outside Docker (for development)
 
 Needs Python 3.10+ (see [Prerequisites](#prerequisites)) — use `python3.10`/`python3.12`/etc.

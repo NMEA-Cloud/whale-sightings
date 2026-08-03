@@ -160,6 +160,10 @@ function consumeAccessTokenFromUrlFragment() {
   }
   accessToken = decodeURIComponent(window.location.hash.slice(prefix.length));
   history.replaceState(null, "", window.location.pathname + window.location.search);
+  // The redirect to login and back is a full page navigation, so whatever status message
+  // was showing before it (e.g. "redirecting to sign in...") is long gone by now — without
+  // this, there's no indication a delete needs to be retried after signing in.
+  setStatus(clearStatus, "Signed in — click \"Clear all sightings\" again to finish.", false);
 }
 
 // Discovers the authorization server from a 401's WWW-Authenticate resource_metadata link

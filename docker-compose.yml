@@ -105,6 +105,9 @@ services:
       HYDRA_ADMIN_URL: https://hydra:4445
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: change-me
+      # Shorten for demos where you want the login form to reliably reappear without
+      # manually revoking the session each time — see the README's OAuth2 section.
+      LOGIN_REMEMBER_SECONDS: "3600"
     volumes:
       # certs/rootCA.pem (written by scripts/setup-tls.sh) lets this container's outbound
       # calls to https://hydra:4445 trust Hydra's mkcert-issued cert.
