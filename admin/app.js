@@ -6,6 +6,13 @@ const API_BASE = window.WHALE_SIGHTINGS_CONFIG?.apiBase ?? "https://localhost:80
 
 const OBSERVER_ID_PLACEHOLDER = "https://example.org/users/anonymous-observer";
 
+// In-memory only — never localStorage/sessionStorage. This is a public SPA client with no
+// CSP hardening; keeping the token out of Web Storage means a reload loses it (you'll be
+// sent through login again on the next admin action) but an XSS can't exfiltrate a
+// persisted token. See consumeAccessTokenFromUrlFragment() and triggerLogin() below for how
+// it gets in and out of this variable.
+let accessToken = null;
+
 const statCount = document.getElementById("stat-count");
 const statOldest = document.getElementById("stat-oldest");
 const statNewest = document.getElementById("stat-newest");
@@ -143,6 +150,66 @@ function renderScenarioButtons() {
   }
 }
 
+// Picks up the access token handed back by callback.html after a successful login, passed
+// via URL fragment rather than Web Storage (see the accessToken comment above) — fragments
+// are never sent to the server and aren't persisted once replaceState() below runs.
+function consumeAccessTokenFromUrlFragment() {
+  const prefix = "#access_token=";
+  if (!window.location.hash.startsWith(prefix)) {
+    return;
+  }
+  accessToken = decodeURIComponent(window.location.hash.slice(prefix.length));
+  history.replaceState(null, "", window.location.pathname + window.location.search);
+  // The redirect to login and back is a full page navigation, so whatever status message
+  // was showing before it (e.g. "redirecting to sign in...") is long gone by now — without
+  // this, there's no indication a delete needs to be retried after signing in.
+  setStatus(clearStatus, "Signed in — click \"Clear all sightings\" again to finish.", false);
+}
+
+// Discovers the authorization server from a 401's WWW-Authenticate resource_metadata link
+// (RFC 9728), then its authorization/token endpoints (RFC 8414), and redirects there with a
+// PKCE-protected authorization-code request. No admin-client-specific config needed for any
+// of this — the AS can relocate to a different LAN machine and only service's
+// OAUTH_ISSUER_URL has to change (see the OAuth2 plan for the full relocation story).
+async function triggerLogin(resourceMetadataUrl) {
+  const resourceResponse = await fetch(resourceMetadataUrl);
+  if (!resourceResponse.ok) {
+    throw new Error(`Failed to fetch resource metadata (${resourceResponse.status})`);
+  }
+  const resourceMetadata = await resourceResponse.json();
+  const issuer = resourceMetadata.authorization_servers[0];
+
+  const asMetadataResponse = await fetch(`${issuer}/.well-known/oauth-authorization-server`);
+  if (!asMetadataResponse.ok) {
+    throw new Error(`Failed to fetch authorization server metadata (${asMetadataResponse.status})`);
+  }
+  const asMetadata = await asMetadataResponse.json();
+
+  const codeVerifier = randomPkceString();
+  const codeChallenge = await sha256Base64Url(codeVerifier);
+  const state = randomPkceString();
+
+  // Held only for this redirect round-trip — useless to anyone without also completing the
+  // redirect in this same browser session, so sessionStorage (unlike the access token
+  // itself) is fine here.
+  sessionStorage.setItem("oauth_code_verifier", codeVerifier);
+  sessionStorage.setItem("oauth_state", state);
+  sessionStorage.setItem("oauth_token_endpoint", asMetadata.token_endpoint);
+
+  const params = new URLSearchParams({
+    client_id: CLIENT_ID,
+    response_type: "code",
+    redirect_uri: `${window.location.origin}/callback.html`,
+    scope: "openid",
+    audience: API_BASE,
+    state,
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
+  });
+
+  window.location.assign(`${asMetadata.authorization_endpoint}?${params.toString()}`);
+}
+
 async function clearAllSightings() {
   setStatus(clearStatus, "Clearing...", false);
 
@@ -153,7 +220,23 @@ async function clearAllSightings() {
   const sightings = await listResponse.json();
 
   for (const record of sightings) {
-    const deleteResponse = await fetch(`${API_BASE}/sightings/${record.id}`, { method: "DELETE" });
+    const deleteResponse = await fetch(`${API_BASE}/sightings/${record.id}`, {
+      method: "DELETE",
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    });
+
+    if (deleteResponse.status === 401) {
+      const { resource_metadata: resourceMetadata } = parseWwwAuthenticate(
+        deleteResponse.headers.get("WWW-Authenticate") ?? ""
+      );
+      if (!resourceMetadata) {
+        throw new Error("Delete failed (401) with no resource_metadata to start login from");
+      }
+      setStatus(clearStatus, "Not logged in — redirecting to sign in...", false);
+      await triggerLogin(resourceMetadata);
+      return; // navigating away; nothing left to do in this call
+    }
+
     if (!deleteResponse.ok) {
       throw new Error(`Failed to delete sighting ${record.id} (${deleteResponse.status})`);
     }
@@ -174,5 +257,6 @@ clearAllButton.addEventListener("click", () => {
   clearAllSightings().catch((error) => setStatus(clearStatus, error.message, true));
 });
 
+consumeAccessTokenFromUrlFragment();
 renderScenarioButtons();
 refreshStats().catch((error) => setStatus(statsStatus, error.message, true));
