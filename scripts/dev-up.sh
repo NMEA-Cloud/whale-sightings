@@ -2,7 +2,11 @@
 # Starts the full dev environment in a tmux session — one window each for docker compose,
 # the admin static server, the client static server, and a free shell (with service/.venv
 # activated). Works from any terminal app (tmux owns the panes, not the surrounding app).
-# Safe to re-run: if the session already exists, this just attaches to it.
+# Safe to re-run: if the session is already running the compose stack, this just attaches to
+# (or, if already inside tmux, switches to) it. If a stale session is lying around — e.g. a
+# previous docker compose process died from a Docker Desktop restart or the machine
+# sleeping, which by default silently closes that tmux window while the others live on — this
+# tears it down and starts fresh rather than attaching you to a half-dead environment.
 #
 # Requires tmux (brew install tmux) and scripts/setup-tls.sh to have been run at least once.
 set -euo pipefail
@@ -18,12 +22,38 @@ if ! command -v tmux >/dev/null 2>&1; then
   exit 1
 fi
 
+# tmux refuses to attach into a session from a shell that's already inside one ("sessions
+# should be nested with care") — switch-client is the equivalent move in that case.
+attach_or_switch() {
+  if [ -n "${TMUX:-}" ]; then
+    exec tmux switch-client -t "$SESSION"
+  else
+    exec tmux attach -t "$SESSION"
+  fi
+}
+
+session_is_healthy() {
+  tmux has-session -t "$SESSION" 2>/dev/null || return 1
+  # A session existing doesn't mean docker compose is actually still running inside it —
+  # check the real thing rather than trusting tmux bookkeeping.
+  [ -n "$(docker compose ps --status running -q 2>/dev/null)" ]
+}
+
 if tmux has-session -t "$SESSION" 2>/dev/null; then
-  echo "Session '$SESSION' is already running — attaching."
-  exec tmux attach -t "$SESSION"
+  if session_is_healthy; then
+    echo "Session '$SESSION' is already running — attaching."
+    attach_or_switch
+  else
+    echo "Session '$SESSION' exists but the compose stack isn't running (stale) — recreating it."
+    tmux kill-session -t "$SESSION"
+  fi
 fi
 
 tmux new-session -d -s "$SESSION" -n docker -c "$REPO_ROOT" "docker compose up --build"
+# If a window's process dies (any of the four, but this matters most for docker compose —
+# see the header comment), keep the pane around showing its last output instead of the
+# window silently vanishing, which is what made the stale-session case above hard to notice.
+tmux set-option -t "$SESSION" remain-on-exit on
 tmux new-window -t "$SESSION" -n admin -c "$REPO_ROOT/admin" "python3 -m http.server 8081"
 tmux new-window -t "$SESSION" -n client -c "$REPO_ROOT/client" "python3 -m http.server 8080"
 tmux new-window -t "$SESSION" -n shell -c "$REPO_ROOT"
@@ -35,4 +65,4 @@ echo "Started tmux session '$SESSION': docker | admin | client | shell"
 echo "Switch windows with Ctrl-b <number>, detach with Ctrl-b d."
 echo "Tear down with ./scripts/dev-down.sh"
 
-exec tmux attach -t "$SESSION"
+attach_or_switch
