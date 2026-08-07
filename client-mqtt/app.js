@@ -284,8 +284,10 @@ function renderSightings(records) {
   updateMapMarkers(records);
 }
 
-// Delete is only exposed here for iteration 1 convenience. Once auth exists, this
-// action should move to an admin-only client rather than staying on the public one.
+// Deliberately unauthenticated — DELETE /sightings/{id} requires an admin bearer token
+// (see service/app/auth.py), so this always fails with a 401. Left on this client on
+// purpose, as a working demo of the same endpoint succeeding from the admin client and
+// being rejected here.
 async function deleteSighting(id) {
   const response = await fetch(`${API_BASE}/sightings/${id}`, { method: "DELETE" });
   if (!response.ok) {

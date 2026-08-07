@@ -7,7 +7,7 @@ development today; the service is intended to eventually deploy to AWS.
 ## Project layout
 
 - `service/` — FastAPI application, persists sightings in Valkey, runs in Docker.
-- `client/` — vanilla HTML/CSS/JS public client, served by a plain static file server (no build step).
+- `client-mqtt/` — vanilla HTML/CSS/JS public client, live-updated via MQTT over WebSockets, served by a plain static file server (no build step).
 - `admin/` — vanilla HTML/CSS/JS admin client (stats + demo data loading), also static, no build step.
 - `hydra/` — config for the self-hosted Ory Hydra OAuth2 authorization server.
 - `login-consent/` — small FastAPI app serving Hydra's login/consent screens.
@@ -55,7 +55,7 @@ Windows (not needed on macOS/Linux, and not an issue for browsers, which soft-fa
 ### TLS for remote clients
 
 The default cert only covers `localhost`/`127.0.0.1`/`::1`, so a client on another machine
-(pointed at your LAN IP via its `config.js` — see "Running the client" below) will still
+(pointed at your LAN IP via its `config.js` — see "Running the MQTT client" below) will still
 hit a certificate error even once it can reach the service. Two things are needed to fix
 that:
 
@@ -117,7 +117,7 @@ docker compose up --build
 - Valkey is exposed on `localhost:6379` for debugging with `valkey-cli`.
 - The MQTT broker (Mosquitto) is exposed on `localhost:1883` (plain MQTT, e.g. for
   `mosquitto_sub`) and `localhost:9001` (MQTT-over-WebSockets, what the browser client
-  uses) — see "Running the client" below.
+  uses) — see "Running the MQTT client" below.
 
 ### Example requests
 
@@ -195,13 +195,13 @@ Get stats (count, oldest, newest sighting) — used by the admin client:
 curl https://localhost:8000/sightings/stats
 ```
 
-## Running the client
+## Running the MQTT client
 
 The client is a static site with no build step, and is not part of `docker-compose.yml`.
 Run it with any static file server, e.g.:
 
 ```bash
-cd client
+cd client-mqtt
 python3 -m http.server 8080
 ```
 
@@ -221,9 +221,9 @@ client subscribes over MQTT-over-WebSockets (`ws://localhost:9001`) and re-runs 
 current filtered query on each notification. The manual Refresh button still works too.
 
 The client points at the service via `API_BASE` (and the MQTT broker via `MQTT_WS_URL`),
-both defined in `client/app.js` with `https://localhost:8000` / `ws://localhost:9001` as
-the defaults. To point this client at a service running elsewhere (e.g. on another
-machine on your network), copy `client/config.example.js` to `client/config.js`
+both defined in `client-mqtt/app.js` with `https://localhost:8000` / `ws://localhost:9001`
+as the defaults. To point this client at a service running elsewhere (e.g. on another
+machine on your network), copy `client-mqtt/config.example.js` to `client-mqtt/config.js`
 (gitignored, like `.env`) and edit the values there — no need to touch `app.js` itself.
 
 ### Try the live sync

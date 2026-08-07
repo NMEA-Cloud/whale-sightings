@@ -8,7 +8,7 @@ venv/
 
 # Env files
 .env
-client/config.js
+client-mqtt/config.js
 admin/config.js
 docker-compose.override.yml
 

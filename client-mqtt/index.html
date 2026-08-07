@@ -101,8 +101,9 @@
     <button id="clear-filter-button" type="button">Show all</button>
     <p id="list-status" class="status" role="status"></p>
     <p class="note">
-      Delete is exposed here temporarily. Once auth exists, it will only be available
-      via an admin client, not this public one.
+      Delete is intentionally left unauthenticated here — this request gets rejected with
+      a 401 (see the OAuth2 section in the README); only the admin client can actually
+      delete a sighting.
     </p>
     <table id="sightings-table">
       <thead>
