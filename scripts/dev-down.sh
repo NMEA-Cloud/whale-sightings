@@ -22,6 +22,7 @@ echo "Stopping admin/shared/client static servers..."
 tmux send-keys -t "$SESSION:admin" C-c 2>/dev/null || true
 tmux send-keys -t "$SESSION:shared" C-c 2>/dev/null || true
 tmux send-keys -t "$SESSION:client-mqtt" C-c 2>/dev/null || true
+tmux send-keys -t "$SESSION:client-long-poll" C-c 2>/dev/null || true
 
 echo "Deactivating venv in the shell window..."
 tmux send-keys -t "$SESSION:shell" C-c 2>/dev/null || true
