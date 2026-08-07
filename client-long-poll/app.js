@@ -10,7 +10,10 @@ const POLL_ERROR_RETRY_MS = 3000; // backoff after a network/HTTP error so a bro
 // Advances forward on every matched poll response — read by pollLoop() below, but not by
 // loadSightings(), which is a full filtered reload independent of this cursor. since_hours
 // filtering in the UI keeps working normally through that reload; it's just not what this
-// cursor itself uses to detect new arrivals.
+// cursor itself uses to detect new arrivals. Tracks each record's created_at (when the
+// server inserted it), not its own reported datetime — the report form allows backdating
+// ("spotted 20 minutes ago"), and a backdated sighting is still brand new data the instant
+// it's created. See poll_sightings()'s docstring in service/app/routers/sightings.py.
 let sinceCursor = new Date().toISOString();
 
 function sleep(ms) {
@@ -46,10 +49,10 @@ async function pollLoop() {
       }
 
       const matched = await response.json();
+      const cursorBefore = sinceCursor;
       for (const record of matched) {
-        const matchedDatetime = record.sighting.location.geometry.properties.datetime;
-        if (matchedDatetime > sinceCursor) {
-          sinceCursor = matchedDatetime;
+        if (record.created_at > sinceCursor) {
+          sinceCursor = record.created_at;
         }
       }
 
@@ -58,6 +61,16 @@ async function pollLoop() {
       // "something changed" signal and re-run the normal filtered load, same as every
       // other refresh trigger.
       await loadSightings().catch((error) => setListStatus(error.message, true));
+
+      // Defensive: a 200 response should always carry a newer created_at than what we
+      // sent, advancing the cursor. If it didn't, immediately re-requesting the same
+      // since would spin-loop against the server forever — back off instead. Shouldn't
+      // happen with matching client/server code, but guards against exactly the failure
+      // mode of a stale tab (old client JS) left open against an upgraded server.
+      if (sinceCursor === cursorBefore) {
+        console.error("Poll matched but didn't advance the cursor — backing off.");
+        await sleep(POLL_ERROR_RETRY_MS);
+      }
     } catch (error) {
       console.error("Poll error:", error);
       await sleep(POLL_ERROR_RETRY_MS);

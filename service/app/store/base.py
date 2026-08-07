@@ -23,6 +23,11 @@ class SightingStore(ABC):
         """Return sightings whose datetime is at or after cutoff, newest first."""
 
     @abstractmethod
+    def list_created_since(self, cutoff: datetime) -> list[SightingRecord]:
+        """Return sightings created at or after cutoff (server-assigned creation time,
+        not the sighting's own reported datetime), newest first."""
+
+    @abstractmethod
     def list_within_radius(self, lon: float, lat: float, radius_nm: float) -> list[SightingRecord]:
         """Return sightings within radius_nm nautical miles of (lon, lat), newest first."""
 

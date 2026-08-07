@@ -397,6 +397,7 @@ See `service/app/models.py` for the full schema. A sighting envelope has this sh
 ```json
 {
   "id": "server-assigned uuid",
+  "created_at": "server-assigned, set once at insertion",
   "sighting": {
     "location": { "geometry": { "type": "Point", "coordinates": [lon, lat], "properties": { "datetime": "..." } } },
     "status": "alive | dead | distressed | unknown",
@@ -415,6 +416,13 @@ See `service/app/models.py` for the full schema. A sighting envelope has this sh
 ```
 
 Coordinates are in GeoJSON order: `[longitude, latitude]`.
+
+`created_at` is distinct from `sighting.location.geometry.properties.datetime`: the latter
+is user-editable and backdatable (the report form supports "reporting a sighting after the
+fact"), the former is set once, server-side, at insertion and never changes. `since_hours`
+on `GET /sightings` filters on the sighting's own datetime — "what did people see
+recently." `GET /sightings/poll` filters on `created_at` — "what's new in the database" —
+since a backdated sighting is still brand-new data the instant it's created.
 
 ## Roadmap
 

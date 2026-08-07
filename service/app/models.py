@@ -67,6 +67,12 @@ class SightingCreate(BaseModel):
 
 class SightingRecord(BaseModel):
     id: UUID
+    # Server-assigned, set once at insertion — distinct from sighting.location.geometry
+    # .properties.datetime, which is the user-editable, backdatable "when was this
+    # observed" field (the report form explicitly supports reporting after the fact).
+    # GET /sightings/poll's cursor is based on this field for exactly that reason: a
+    # backdated sighting is still new data the instant it's created.
+    created_at: datetime
     sighting: SightingData
     observer: Observer
     images: list[str] = []
