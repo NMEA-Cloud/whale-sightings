@@ -8,6 +8,7 @@ development today; the service is intended to eventually deploy to AWS.
 
 - `service/` — FastAPI application, persists sightings in Valkey, runs in Docker.
 - `client-mqtt/` — vanilla HTML/CSS/JS public client, live-updated via MQTT over WebSockets, served by a plain static file server (no build step).
+- `shared/` — rendering/form/filter JS shared by `client-mqtt/` and `client-long-poll/`; see "Serving the shared client code" below.
 - `admin/` — vanilla HTML/CSS/JS admin client (stats + demo data loading), also static, no build step.
 - `hydra/` — config for the self-hosted Ory Hydra OAuth2 authorization server.
 - `login-consent/` — small FastAPI app serving Hydra's login/consent screens.
@@ -193,6 +194,21 @@ Get stats (count, oldest, newest sighting) — used by the admin client:
 
 ```bash
 curl https://localhost:8000/sightings/stats
+```
+
+## Serving the shared client code
+
+`client-mqtt/` and `client-long-poll/` (below) both load `shared/sightings-shared.js` — the
+rendering/form/filter code common to both, so only each client's own live-sync mechanism
+(MQTT vs. long-polling) needs reading to see what's different between them. A plain
+`python3 -m http.server` can only serve files inside the directory it's rooted at, so this
+can't just be a relative `../shared/...` import from each client — it's served from its own
+tiny static server instead, loaded cross-origin the same way the Leaflet/MQTT scripts
+already are, from a CDN. Start it before either client:
+
+```bash
+cd shared
+python3 -m http.server 8083
 ```
 
 ## Running the MQTT client

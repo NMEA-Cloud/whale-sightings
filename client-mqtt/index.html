@@ -141,6 +141,10 @@
     crossorigin=""
   ></script>
   <script src="config.js"></script>
+  <!-- Served separately (see "Serving the shared client code" in the README) since a plain
+       `python3 -m http.server` can't reach files outside the directory it's rooted at —
+       loaded cross-origin the same way the Leaflet/MQTT scripts above are, from a CDN. -->
+  <script src="http://localhost:8083/sightings-shared.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
