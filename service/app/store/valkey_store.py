@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from redis import Redis
@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 SIGHTING_KEY_PREFIX = "sighting:"
 BY_TIME_KEY = "sightings:by_time"
+BY_CREATED_KEY = "sightings:by_created_at"
 GEO_KEY = "sightings:geo"
 NM_TO_KM = 1.852  # international nautical mile
 
@@ -22,6 +23,7 @@ class ValkeySightingStore(SightingStore):
     def create(self, payload: SightingCreate) -> SightingRecord:
         record = SightingRecord(
             id=uuid4(),
+            created_at=datetime.now(timezone.utc),
             sighting=payload.sighting,
             observer=payload.observer,
             images=payload.images,
@@ -33,12 +35,13 @@ class ValkeySightingStore(SightingStore):
         pipe = self._client.pipeline(transaction=True)
         pipe.set(f"{SIGHTING_KEY_PREFIX}{record_id}", record.model_dump_json())
         pipe.zadd(BY_TIME_KEY, {record_id: score})
+        pipe.zadd(BY_CREATED_KEY, {record_id: record.created_at.timestamp()})
         # Valkey/Redis GEO commands only accept latitude in [-85.05112878, 85.05112878],
         # narrower than GeoJSON's [-90, 90]. Skip-and-log rather than fail the whole write.
         pipe.geoadd(GEO_KEY, [lon, lat, record_id])
         results = pipe.execute(raise_on_error=False)
 
-        geoadd_result = results[2]
+        geoadd_result = results[3]
         if isinstance(geoadd_result, Exception):
             logger.warning(
                 "GEOADD skipped for sighting %s (lon=%s, lat=%s): %s",
@@ -53,6 +56,10 @@ class ValkeySightingStore(SightingStore):
 
     def list_since(self, cutoff: datetime) -> list[SightingRecord]:
         ids = self._client.zrevrangebyscore(BY_TIME_KEY, "+inf", cutoff.timestamp())
+        return self._hydrate(ids)
+
+    def list_created_since(self, cutoff: datetime) -> list[SightingRecord]:
+        ids = self._client.zrevrangebyscore(BY_CREATED_KEY, "+inf", cutoff.timestamp())
         return self._hydrate(ids)
 
     def list_within_radius(self, lon: float, lat: float, radius_nm: float) -> list[SightingRecord]:
@@ -96,8 +103,9 @@ class ValkeySightingStore(SightingStore):
         pipe = self._client.pipeline(transaction=True)
         pipe.delete(f"{SIGHTING_KEY_PREFIX}{record_id}")
         pipe.zrem(BY_TIME_KEY, record_id)
+        pipe.zrem(BY_CREATED_KEY, record_id)
         # GEOADD stores members in a sorted set under the hood, so ZREM removes them too.
         pipe.zrem(GEO_KEY, record_id)
-        deleted_count, _, _ = pipe.execute()
+        deleted_count, _, _, _ = pipe.execute()
 
         return bool(deleted_count)

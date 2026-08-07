@@ -31,7 +31,7 @@ services:
       VALKEY_PORT: 6379
       MQTT_HOST: mqtt
       MQTT_PORT: 1883
-      CORS_ORIGINS: http://localhost:8080,http://localhost:8081
+      CORS_ORIGINS: http://localhost:8080,http://localhost:8081,http://localhost:8082
       PUBLIC_API_BASE_URL: https://localhost:8000
       # The only setting that changes if the OAuth2 authorization server (hydra) relocates
       # to a different LAN machine — see hydra/hydra.yml's URLS_SELF_ISSUER comment. Must

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.models import (
     GeoJSONPoint,
@@ -37,8 +37,10 @@ def test_create_assigns_id_and_populates_indexes(store, fake_redis_client):
     record = store.create(make_payload())
 
     assert record.id is not None
+    assert record.created_at is not None
     assert fake_redis_client.get(f"sighting:{record.id}") is not None
     assert fake_redis_client.zscore("sightings:by_time", str(record.id)) is not None
+    assert fake_redis_client.zscore("sightings:by_created_at", str(record.id)) is not None
 
 
 def test_list_all_newest_first(store):
@@ -68,6 +70,36 @@ def test_list_since_includes_record_exactly_at_cutoff(store):
     records = store.list_since(cutoff)
 
     assert [r.id for r in records] == [record.id]
+
+
+def test_list_created_since_excludes_records_before_cutoff(store):
+    record = store.create(make_payload())
+
+    cutoff = record.created_at + timedelta(seconds=1)
+
+    assert store.list_created_since(cutoff) == []
+
+
+def test_list_created_since_includes_record_at_cutoff(store):
+    record = store.create(make_payload())
+
+    records = store.list_created_since(record.created_at)
+
+    assert [r.id for r in records] == [record.id]
+
+
+def test_list_created_since_includes_backdated_sighting_that_list_since_would_exclude(store):
+    # The key distinction this store method exists for: list_since() filters on the
+    # sighting's own (backdatable) reported datetime, list_created_since() on when the
+    # record was actually inserted — a sighting reported as "spotted an hour ago" is still
+    # brand new data right now.
+    backdated_when = datetime.now(timezone.utc) - timedelta(hours=1)
+    record = store.create(make_payload(when=backdated_when))
+
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=1)
+
+    assert store.list_since(cutoff) == []
+    assert [r.id for r in store.list_created_since(cutoff)] == [record.id]
 
 
 def test_stats_on_empty_store(store):
@@ -112,6 +144,7 @@ def test_delete_removes_record_and_indexes(store, fake_redis_client):
     assert deleted is True
     assert fake_redis_client.get(f"sighting:{record.id}") is None
     assert fake_redis_client.zscore("sightings:by_time", str(record.id)) is None
+    assert fake_redis_client.zscore("sightings:by_created_at", str(record.id)) is None
     assert fake_redis_client.zscore("sightings:geo", str(record.id)) is None
     assert store.list_all() == []
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Whale Sightings</title>
+  <title>Whale Sightings (MQTT)</title>
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <h1>Whale Sightings</h1>
+  <h1>Whale Sightings (MQTT)</h1>
 
   <div class="layout">
   <div class="column-main">
@@ -101,8 +101,9 @@
     <button id="clear-filter-button" type="button">Show all</button>
     <p id="list-status" class="status" role="status"></p>
     <p class="note">
-      Delete is exposed here temporarily. Once auth exists, it will only be available
-      via an admin client, not this public one.
+      Delete is intentionally left unauthenticated here — this request gets rejected with
+      a 401 (see the OAuth2 section in the README); only the admin client can actually
+      delete a sighting.
     </p>
     <table id="sightings-table">
       <thead>
@@ -140,6 +141,10 @@
     crossorigin=""
   ></script>
   <script src="config.js"></script>
+  <!-- Served separately (see "Serving the shared client code" in the README) since a plain
+       `python3 -m http.server` can't reach files outside the directory it's rooted at —
+       loaded cross-origin the same way the Leaflet/MQTT scripts above are, from a CDN. -->
+  <script src="http://localhost:8083/sightings-shared.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -1,15 +1,19 @@
+// Shared between client-mqtt/app.js and client-long-poll/app.js — loaded via a plain
+// <script> tag before either (classic scripts, no modules, same mechanism config.js →
+// app.js already relies on), so everything declared here is a global both app.js files can
+// use. This holds the code that's agnostic to *how* a client learns something changed —
+// rendering, the report form, filters, lookup, delete. Each client's own app.js stays small
+// and holds only its live-sync mechanism (MQTT subscribe vs. long-poll loop), which is the
+// part actually worth reading client-to-client.
+//
+// Both index.html files must use identical element IDs for everything referenced below.
+
 // Overridable via config.js (copy config.example.js — see README) for pointing this
 // client at a service on another machine. Falls back to localhost if config.js isn't
 // present. The service is TLS-only — run scripts/setup-tls.sh (or .ps1) once so
 // whatever cert it serves is trusted.
 const config = window.WHALE_SIGHTINGS_CONFIG ?? {};
 const API_BASE = config.apiBase ?? "https://localhost:8000";
-
-// The service publishes here on every sighting create/delete, so any open tab can
-// live-refresh its list. Plain ws:// is fine — this client is itself served over plain
-// http, so there's no mixed-content restriction to work around.
-const MQTT_WS_URL = config.mqttWsUrl ?? "ws://localhost:9001";
-const MQTT_TOPIC = "whale-sightings/updates";
 
 const OBSERVER_ID_PLACEHOLDER = "https://example.org/users/anonymous-observer";
 
@@ -83,24 +87,6 @@ function initMap() {
     }
     pickTarget = null;
     updatePickButtons();
-  });
-}
-
-// Live-sync: any create/delete from any open tab re-triggers this tab's normal filtered
-// load, so the table/map refresh without duplicating filtering or merge logic here.
-function connectMqtt() {
-  const mqttClient = mqtt.connect(MQTT_WS_URL);
-
-  mqttClient.on("connect", () => {
-    mqttClient.subscribe(MQTT_TOPIC);
-  });
-
-  mqttClient.on("message", () => {
-    loadSightings().catch((error) => setListStatus(error.message, true));
-  });
-
-  mqttClient.on("error", (error) => {
-    console.error("MQTT connection error:", error);
   });
 }
 
@@ -220,31 +206,51 @@ async function lookupSighting() {
   }
 }
 
-async function loadSightings() {
-  // Clear any error from a previous load attempt so it doesn't linger after this one succeeds.
-  setListStatus("", false);
-
-  const sinceHours = sinceHoursFilterInput.value;
+// Reads the three radius filter fields: null if none are filled (no location filter),
+// {radiusNm, radiusLat, radiusLon} if all three are, throws if only some are. A separate
+// function (not inlined in loadSightings) because the long-poll client's poll loop needs
+// the exact same radius params, and each call site turns a thrown error into its own
+// status message.
+function readRadiusFilter() {
   const radiusNm = radiusNmFilterInput.value;
   const radiusLat = radiusLatFilterInput.value;
   const radiusLon = radiusLonFilterInput.value;
 
-  const radiusFields = [radiusNm, radiusLat, radiusLon];
-  const anyRadiusField = radiusFields.some((value) => value !== "");
-  const allRadiusFields = radiusFields.every((value) => value !== "");
-  if (anyRadiusField && !allRadiusFields) {
-    setListStatus("Fill in radius, latitude, and longitude together to filter by location.", true);
+  const fields = [radiusNm, radiusLat, radiusLon];
+  const anyField = fields.some((value) => value !== "");
+  const allFields = fields.every((value) => value !== "");
+
+  if (!anyField) {
+    return null;
+  }
+  if (!allFields) {
+    throw new Error("Fill in radius, latitude, and longitude together to filter by location.");
+  }
+  return { radiusNm, radiusLat, radiusLon };
+}
+
+async function loadSightings() {
+  // Clear any error from a previous load attempt so it doesn't linger after this one succeeds.
+  setListStatus("", false);
+
+  let radiusFilter;
+  try {
+    radiusFilter = readRadiusFilter();
+  } catch (error) {
+    setListStatus(error.message, true);
     return;
   }
+
+  const sinceHours = sinceHoursFilterInput.value;
 
   const params = new URLSearchParams();
   if (sinceHours) {
     params.set("since_hours", sinceHours);
   }
-  if (allRadiusFields) {
-    params.set("radius_nm", radiusNm);
-    params.set("lat", radiusLat);
-    params.set("lon", radiusLon);
+  if (radiusFilter) {
+    params.set("radius_nm", radiusFilter.radiusNm);
+    params.set("lat", radiusFilter.radiusLat);
+    params.set("lon", radiusFilter.radiusLon);
   }
   const query = params.toString();
   const url = query ? `${API_BASE}/sightings?${query}` : `${API_BASE}/sightings`;
@@ -284,8 +290,10 @@ function renderSightings(records) {
   updateMapMarkers(records);
 }
 
-// Delete is only exposed here for iteration 1 convenience. Once auth exists, this
-// action should move to an admin-only client rather than staying on the public one.
+// Deliberately unauthenticated — DELETE /sightings/{id} requires an admin bearer token
+// (see service/app/auth.py), so this always fails with a 401. Left on both clients on
+// purpose, as a working demo of the same endpoint succeeding from the admin client and
+// being rejected here.
 async function deleteSighting(id) {
   const response = await fetch(`${API_BASE}/sightings/${id}`, { method: "DELETE" });
   if (!response.ok) {
@@ -411,9 +419,3 @@ sightingsBody.addEventListener("click", async (event) => {
     setListStatus(error.message, true);
   }
 });
-
-initMap();
-loadSightings().catch((error) => setListStatus(error.message, true));
-populateLocationFields();
-populateDatetimeField();
-connectMqtt();
