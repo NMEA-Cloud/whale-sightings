@@ -1,8 +1,9 @@
 from datetime import datetime
 from enum import Enum
+from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 
 class SightingStatus(str, Enum):
@@ -76,6 +77,24 @@ class SightingRecord(BaseModel):
     sighting: SightingData
     observer: Observer
     images: list[str] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def _backfill_created_at_for_legacy_records(cls, data: Any) -> Any:
+        """Records written to the store before this field existed have no created_at in
+        their stored JSON. Rather than fail every read of a pre-existing deployment's data
+        (turning GET /sightings into a hard 500 the moment one legacy record is hydrated),
+        approximate it from the sighting's own reported datetime — not the true original
+        insertion time (that's unrecoverable), but enough to keep old data readable."""
+        if isinstance(data, dict) and data.get("created_at") is None:
+            try:
+                data = {
+                    **data,
+                    "created_at": data["sighting"]["location"]["geometry"]["properties"]["datetime"],
+                }
+            except (KeyError, TypeError):
+                pass
+        return data
 
 
 class SightingStats(BaseModel):
