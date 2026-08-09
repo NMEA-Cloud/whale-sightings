@@ -102,6 +102,31 @@ def test_list_created_since_includes_backdated_sighting_that_list_since_would_ex
     assert [r.id for r in store.list_created_since(cutoff)] == [record.id]
 
 
+def test_list_all_backfills_created_at_for_legacy_records_missing_it(store, fake_redis_client):
+    # Regression test: a real teammate pulled main onto a Valkey volume containing sightings
+    # written before created_at existed, and GET /sightings 500'd because _hydrate() couldn't
+    # deserialize them. Simulate that by writing a pre-created_at record straight into the
+    # store, bypassing store.create() (which always sets created_at on new records).
+    legacy_id = str(uuid.uuid4())
+    when = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    legacy_json = (
+        '{"id": "%s", "sighting": {"location": {"geometry": {"type": "Point", '
+        '"coordinates": [-122.645, 47.726], "properties": {"datetime": "%s"}}}, '
+        '"status": "alive", "comments": null, "type": "wombat", "species": "Greater Pacific Wombat", '
+        '"name": null, "method": "manual-report"}, '
+        '"observer": {"id": "https://example.org/users/anonymous-observer", '
+        '"location": {"geometry": {"type": "Point", "coordinates": [-122.645, 47.726], '
+        '"properties": {"datetime": "%s"}}}}, "images": []}'
+    ) % (legacy_id, when.isoformat(), when.isoformat())
+    fake_redis_client.set(f"sighting:{legacy_id}", legacy_json)
+    fake_redis_client.zadd("sightings:by_time", {legacy_id: when.timestamp()})
+
+    records = store.list_all()
+
+    assert len(records) == 1
+    assert records[0].created_at == when
+
+
 def test_stats_on_empty_store(store):
     stats = store.stats()
 
