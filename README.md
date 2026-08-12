@@ -57,16 +57,33 @@ Windows (not needed on macOS/Linux, and not an issue for browsers, which soft-fa
 ### TLS for remote clients
 
 The default cert only covers `localhost`/`127.0.0.1`/`::1`, so a client on another machine
-(pointed at your LAN IP via its `config.js` — see "Running the MQTT client" below) will still
-hit a certificate error even once it can reach the service. Two things are needed to fix
-that:
+(pointed at the service's address via its `config.js` — see "Running the MQTT client" below)
+will still hit a certificate error even once it can reach the service. Two things are needed
+to fix that:
 
-1. **Reissue the cert with your LAN IP as an extra name**, on the machine running the
-   service:
+1. **Reissue the cert with an extra name covering how remote clients will reach this
+   machine**, on the machine running the service. Either a LAN IP:
 
    ```bash
    ./scripts/setup-tls.sh 192.168.1.23    # use this machine's actual LAN IP
    ```
+
+   or a resolvable hostname — e.g. this machine's mDNS/Bonjour name, which every other
+   device on the LAN can already resolve with no DNS server or config of its own (macOS and
+   iOS support this out of the box; Linux via `avahi`, usually preinstalled; Windows needs
+   Bonjour installed, e.g. bundled with iTunes, or a standalone installer). Find or set the
+   name in System Settings → General → Sharing → "Local hostname" on macOS, or check
+   `hostname` on Linux (avahi advertises it as `<hostname>.local` by default):
+
+   ```bash
+   ./scripts/setup-tls.sh whale-service.local
+   ```
+
+   A hostname is worth the extra step over an IP: it keeps working after DHCP hands out a
+   new lease, so you're not re-running this and every client's `config.js` every time that
+   happens. It only resolves on the local network, though — if `.local` names don't resolve
+   on your setup (some conference/guest WiFi blocks the multicast traffic mDNS relies on),
+   fall back to the LAN IP.
 
 2. **Get the other machine to trust your mkcert CA.** Find it with `mkcert -CAROOT`
    (prints a directory containing `rootCA.pem` and `rootCA-key.pem`). Copy only
@@ -95,10 +112,21 @@ how you're running the service:
   `CORS_ORIGINS` in your `.env` file instead.
 
 Either way, add the remote client's actual origin (scheme + host + port it's served from),
-e.g. `http://192.168.1.23:8080`, as an extra comma-separated entry alongside the existing
+e.g. `http://192.168.1.23:8080` or, using a resolvable hostname as set up above,
+`http://whale-service.local:8080`, as an extra comma-separated entry alongside the existing
 `http://localhost:8080,http://localhost:8081,http://localhost:8082`. If you're running the
 service via Docker, remember it needs a rebuild (`docker compose up --build`) to pick up
 the change, same as any other edit to `docker-compose.yml`.
+
+**Hostname case gotcha:** browsers always send the `Origin` header lowercased, but
+`CORS_ORIGINS` is matched with an exact, case-sensitive string comparison — so an entry
+like `http://Whale-Service.local:8080` (e.g. pasted straight from `scutil --get
+LocalHostName` on macOS, which capitalizes it) will never match and every request gets
+silently rejected. The failure is confusing because it doesn't look like a CORS error: the
+service logs a normal `200`, but the browser blocks the response before it reaches your
+code, so `fetch()` just throws a generic `Failed to fetch` with nothing more specific.
+Always lowercase the hostname in `CORS_ORIGINS` (and it doesn't hurt to lowercase it in
+`config.js`/`setup-tls.sh` too, for consistency), regardless of how your OS capitalizes it.
 
 If you want to allow clients from anywhere on a LAN subnet rather than enumerating each
 machine's IP, set `CORS_ORIGIN_REGEX` instead (or in addition) — it's matched against the
@@ -325,8 +353,9 @@ Hydra:
 
 Safe to re-run any time; it deletes and re-creates the client. Re-run it if you change
 where the admin client or the service is served from (pass the admin origin and API base
-as arguments — see the script's header comment), same idea as re-running `setup-tls.sh`
-after a LAN IP changes.
+as arguments — see the script's header comment) — same idea as re-running `setup-tls.sh`
+after your address changes, which is one more reason to prefer a resolvable hostname over
+a LAN IP for the service (see "TLS for remote clients" above): it doesn't change.
 
 With that done, clicking "Clear all sightings" in the admin client with no active session
 redirects to a login screen (`admin`/`change-me` by default — see `ADMIN_USERNAME`/

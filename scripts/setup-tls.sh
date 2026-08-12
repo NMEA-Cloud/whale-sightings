@@ -40,8 +40,11 @@ echo "TLS cert written to certs/. Run 'docker compose up --build' to pick it up.
 if [ "$#" -eq 0 ]; then
   echo
   echo "This cert only covers localhost. To let a client on another machine connect"
-  echo "without a certificate warning, re-run with this machine's LAN IP, e.g.:"
+  echo "without a certificate warning, re-run with this machine's LAN IP or a resolvable"
+  echo "hostname (e.g. its mDNS/Bonjour '.local' name — see 'TLS for remote clients' in"
+  echo "the README for why that's nicer than an IP that changes with DHCP), e.g.:"
   echo "  ./scripts/setup-tls.sh 192.168.1.23"
+  echo "  ./scripts/setup-tls.sh whale-service.local"
   echo "Then copy \$(mkcert -CAROOT)/rootCA.pem (never rootCA-key.pem) to the other"
   echo "machine and trust it there — see 'TLS for remote clients' in the README."
 fi
