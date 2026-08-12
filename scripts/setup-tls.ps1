@@ -45,8 +45,11 @@ Write-Host "TLS cert written to certs/. Run 'docker compose up --build' to pick 
 if ($ExtraNames.Count -eq 0) {
     Write-Host ""
     Write-Host "This cert only covers localhost. To let a client on another machine connect"
-    Write-Host "without a certificate warning, re-run with this machine's LAN IP, e.g.:"
+    Write-Host "without a certificate warning, re-run with this machine's LAN IP or a resolvable"
+    Write-Host "hostname (e.g. its mDNS/Bonjour '.local' name - see 'TLS for remote clients' in"
+    Write-Host "the README for why that's nicer than an IP that changes with DHCP), e.g.:"
     Write-Host "  .\scripts\setup-tls.ps1 192.168.1.23"
+    Write-Host "  .\scripts\setup-tls.ps1 whale-service.local"
     Write-Host "Then copy `$(mkcert -CAROOT)\rootCA.pem (never rootCA-key.pem) to the other"
     Write-Host "machine and trust it there - see 'TLS for remote clients' in the README."
 }
