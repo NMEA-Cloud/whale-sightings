@@ -118,6 +118,16 @@ e.g. `http://192.168.1.23:8080` or, using a resolvable hostname as set up above,
 service via Docker, remember it needs a rebuild (`docker compose up --build`) to pick up
 the change, same as any other edit to `docker-compose.yml`.
 
+**Hostname case gotcha:** browsers always send the `Origin` header lowercased, but
+`CORS_ORIGINS` is matched with an exact, case-sensitive string comparison — so an entry
+like `http://Whale-Service.local:8080` (e.g. pasted straight from `scutil --get
+LocalHostName` on macOS, which capitalizes it) will never match and every request gets
+silently rejected. The failure is confusing because it doesn't look like a CORS error: the
+service logs a normal `200`, but the browser blocks the response before it reaches your
+code, so `fetch()` just throws a generic `Failed to fetch` with nothing more specific.
+Always lowercase the hostname in `CORS_ORIGINS` (and it doesn't hurt to lowercase it in
+`config.js`/`setup-tls.sh` too, for consistency), regardless of how your OS capitalizes it.
+
 If you want to allow clients from anywhere on a LAN subnet rather than enumerating each
 machine's IP, set `CORS_ORIGIN_REGEX` instead (or in addition) — it's matched against the
 `Origin` header alongside `CORS_ORIGINS`, e.g.:
