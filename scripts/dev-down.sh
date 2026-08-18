@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tears down what scripts/dev-up.sh started: stops the docker compose stack, interrupts the
-# static file servers, deactivates the venv in the shell window, then kills the tmux
+# Tears down what scripts/dev-up.sh started: stops both docker compose projects, interrupts
+# the static file servers, deactivates the venv in the shell window, then kills the tmux
 # session. Safe to re-run, and always finishes the teardown even if some of these steps
 # don't apply — e.g. a window already closed on its own (docker compose exiting closes its
 # window by default) shouldn't stop the rest of teardown from running, so each step below is
@@ -15,8 +15,9 @@ if ! command -v tmux >/dev/null 2>&1 || ! tmux has-session -t "$SESSION" 2>/dev/
   exit 0
 fi
 
-echo "Stopping docker compose..."
+echo "Stopping docker compose (app and infra projects)..."
 docker compose down || true
+docker compose -f infra/docker-compose.yml down || true
 
 echo "Stopping client-admin/shared/client static servers..."
 tmux send-keys -t "$SESSION:client-admin" C-c 2>/dev/null || true

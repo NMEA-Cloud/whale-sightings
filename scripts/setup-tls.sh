@@ -19,21 +19,25 @@ if ! command -v step >/dev/null 2>&1; then
   exit 1
 fi
 
+# step-ca lives in the infra ("booth-boat") project, not this one — see
+# infra/docker-compose.yml's header comment for why they're split.
+INFRA_COMPOSE=(docker compose -f infra/docker-compose.yml)
+
 # step-ca (unlike mkcert) is a live server, not an offline CLI — it has to be up before we can
 # bootstrap trust or request a cert from it.
 echo "Starting step-ca..."
-docker compose up -d step-ca >/dev/null
+"${INFRA_COMPOSE[@]}" up -d step-ca >/dev/null
 
 echo "Waiting for step-ca to be ready..."
 for _ in $(seq 1 15); do
-  if docker compose exec -T step-ca step ca health --ca-url https://localhost:9000 \
+  if "${INFRA_COMPOSE[@]}" exec -T step-ca step ca health --ca-url https://localhost:9000 \
       --root /home/step/certs/root_ca.crt >/dev/null 2>&1; then
     break
   fi
   sleep 2
 done
 
-ROOT_FINGERPRINT="$(docker compose exec -T step-ca \
+ROOT_FINGERPRINT="$("${INFRA_COMPOSE[@]}" exec -T step-ca \
   step certificate fingerprint /home/step/certs/root_ca.crt)"
 
 mkdir -p certs
@@ -53,7 +57,12 @@ fi
 
 # "hydra" is always included: it's the fixed Docker-network hostname login-consent uses to
 # reach Hydra's admin API (docker-compose.yml's service name for it), not a per-machine value.
-SANS=(--san localhost --san 127.0.0.1 --san ::1 --san hydra)
+# auth.dev.booth-boat.org/api.dev.wombat-sightings.org are also always included: they're
+# Hydra's/service's fixed browser-facing identities (URLS_SELF_ISSUER, PUBLIC_API_BASE_URL —
+# see docker-compose.yml/infra/docker-compose.yml), not per-machine values either. Omitting
+# them here would silently break the OAuth2 login flow on the next cert re-issuance.
+SANS=(--san localhost --san 127.0.0.1 --san ::1 --san hydra \
+  --san auth.dev.booth-boat.org --san api.dev.wombat-sightings.org)
 for host in "$@"; do
   SANS+=(--san "$host")
 done
@@ -62,7 +71,7 @@ done
 # it's the same dev-only placeholder set via DOCKER_STEPCA_INIT_PASSWORD in docker-compose.yml.
 PASSWORD_FILE="$(mktemp)"
 trap 'rm -f "$PASSWORD_FILE"' EXIT
-docker compose exec -T step-ca cat /home/step/secrets/password > "$PASSWORD_FILE"
+"${INFRA_COMPOSE[@]}" exec -T step-ca cat /home/step/secrets/password > "$PASSWORD_FILE"
 
 step ca certificate localhost certs/localhost.pem certs/localhost-key.pem \
   "${SANS[@]}" \
@@ -77,7 +86,9 @@ step ca certificate localhost certs/localhost.pem certs/localhost-key.pem \
 cp ~/.step/certs/root_ca.crt certs/rootCA.pem
 
 echo
-echo "TLS cert written to certs/. Run 'docker compose up --build' to pick it up."
+echo "TLS cert written to certs/. Run 'docker compose up --build' (app project) and"
+echo "'docker compose -f infra/docker-compose.yml up --build' (infra project) — or just"
+echo "./scripts/dev-up.sh, which brings up both — to pick it up."
 echo "(Existing running containers need a restart to pick up a re-issued cert.)"
 
 if [ "$#" -eq 0 ]; then

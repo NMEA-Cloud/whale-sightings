@@ -1,0 +1,117 @@
+name: booth-boat
+
+# Infrastructure project: step-ca, Hydra (OAuth2/OIDC), and its login/consent UI. Split out
+# from the root docker-compose.yml (the "wombat-sightings" app project) so this rehearses the
+# eventual physical split — this infra moving to a Raspberry Pi acting as the trade-show LAN
+# router, while the app project stays on whatever machine(s) run the clients. Joined to the
+# app project via the whale-sightings-net external network (see root docker-compose.yml) so
+# `service` can still resolve `hydra` by Docker-internal name for JWKS fetches.
+#
+# Bring up independently with `docker compose -f infra/docker-compose.yml up --build`, or via
+# scripts/dev-up.sh, which brings up both projects together.
+
+services:
+  # --- step-ca: local development Certificate Authority, replacing mkcert ---
+  #
+  # Auto-initializes its PKI (root CA + a JWK provisioner) on first run via the
+  # DOCKER_STEPCA_INIT_* env vars below, then persists it in the step-ca-data volume so
+  # restarts don't regenerate the root — that would invalidate every cert issued against the
+  # old one, requiring every machine to re-bootstrap trust. Certs are requested from it by the
+  # host's `step` CLI — see scripts/setup-tls.sh. This volume is the same one the root
+  # docker-compose.yml's step-ca service used before this split — pinned by name below so
+  # moving the service definition here doesn't lose the already-bootstrapped root CA.
+
+  step-ca:
+    image: smallstep/step-ca:0.30.2
+    ports:
+      - "9000:9000"
+    environment:
+      DOCKER_STEPCA_INIT_NAME: Whale Sightings Dev CA
+      DOCKER_STEPCA_INIT_DNS_NAMES: localhost,step-ca,127.0.0.1
+      DOCKER_STEPCA_INIT_PROVISIONER_NAME: whale-sightings-admin
+      # Dev-only placeholder, same posture as hydra.yml's SECRETS_SYSTEM — committed
+      # intentionally, not a real secret. Regenerate and re-run `step-ca init` manually (which
+      # means wiping the step-ca-data volume and re-bootstrapping trust everywhere) before
+      # running this anywhere beyond a local/LAN reference deployment.
+      DOCKER_STEPCA_INIT_PASSWORD: youReallyNeedToChangeThisStepCaPassword
+    volumes:
+      - step-ca-data:/home/step
+
+  # --- OAuth2 authorization server (Ory Hydra) + its login/consent UI ---
+  #
+  # hydra-sqlite-init -> hydra-migrate -> hydra, in that order. All four hydra* services
+  # below (and login-consent, which they call back into) are optional infrastructure for the
+  # admin client's login; the app project's `service` and the public clients work fine
+  # without them.
+
+  hydra-sqlite-init:
+    image: busybox
+    command: sh -c "mkdir -p /mnt/sqlite && chown -R 65532:65532 /mnt/sqlite"
+    volumes:
+      - hydra-sqlite:/mnt/sqlite
+
+  hydra-migrate:
+    image: oryd/hydra:v26.2.0
+    environment:
+      DSN: sqlite:///mnt/sqlite/db.sqlite?_fk=true&mode=rwc
+      SECRETS_SYSTEM: youReallyNeedToChangeThis
+    command: migrate -c /etc/config/hydra/hydra.yml sql up -e --yes
+    volumes:
+      - hydra-sqlite:/mnt/sqlite
+      - ../hydra:/etc/config/hydra:ro
+    depends_on:
+      hydra-sqlite-init:
+        condition: service_completed_successfully
+
+  hydra:
+    image: oryd/hydra:v26.2.0
+    ports:
+      - "4444:4444" # public: authorization/token endpoints, discovery docs
+      - "4445:4445" # admin: login/consent request management (login-consent talks to this)
+    environment:
+      DSN: sqlite:///mnt/sqlite/db.sqlite?_fk=true&mode=rwc
+      SECRETS_SYSTEM: youReallyNeedToChangeThis
+      # The three values that change if this AS relocates to a different LAN machine — now
+      # its own resolvable identity instead of localhost/hydra, per the split above.
+      URLS_SELF_ISSUER: https://auth.dev.booth-boat.org:4444
+      URLS_LOGIN: https://auth.dev.booth-boat.org:4446/login
+      URLS_CONSENT: https://auth.dev.booth-boat.org:4446/consent
+    command: serve -c /etc/config/hydra/hydra.yml all
+    volumes:
+      - hydra-sqlite:/mnt/sqlite
+      - ../hydra:/etc/config/hydra:ro
+      - ../certs:/certs:ro
+    networks:
+      default: {}
+      whale-sightings-net: {}
+    depends_on:
+      hydra-migrate:
+        condition: service_completed_successfully
+
+  login-consent:
+    build: ../login-consent
+    ports:
+      - "4446:4446"
+    environment:
+      HYDRA_ADMIN_URL: https://hydra:4445
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: change-me
+      # Shorten for demos where you want the login form to reliably reappear without
+      # manually revoking the session each time — see the README's OAuth2 section.
+      LOGIN_REMEMBER_SECONDS: "3600"
+    volumes:
+      # certs/rootCA.pem (written by scripts/setup-tls.sh) lets this container's outbound
+      # calls to https://hydra:4445 trust Hydra's step-ca-issued cert.
+      - ../certs:/certs:ro
+    depends_on:
+      - hydra
+
+networks:
+  whale-sightings-net:
+    external: true
+
+volumes:
+  hydra-sqlite:
+    name: whale-sightings_hydra-sqlite
+  step-ca-data:
+    name: whale-sightings_step-ca-data

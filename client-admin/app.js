@@ -201,7 +201,7 @@ async function triggerLogin(resourceMetadataUrl) {
     response_type: "code",
     redirect_uri: `${window.location.origin}/callback.html`,
     scope: "openid",
-    audience: API_BASE,
+    audience: resourceMetadata.resource,
     state,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
