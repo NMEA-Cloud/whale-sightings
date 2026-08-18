@@ -51,6 +51,30 @@ services:
       mqtt:
         condition: service_healthy
 
+  # --- step-ca: local development Certificate Authority, replacing mkcert ---
+  #
+  # Auto-initializes its PKI (root CA + a JWK provisioner) on first run via the
+  # DOCKER_STEPCA_INIT_* env vars below, then persists it in the step-ca-data volume so
+  # restarts don't regenerate the root — that would invalidate every cert issued against the
+  # old one, requiring every machine to re-bootstrap trust. Certs are requested from it by the
+  # host's `step` CLI — see scripts/setup-tls.sh.
+
+  step-ca:
+    image: smallstep/step-ca:0.30.2
+    ports:
+      - "9000:9000"
+    environment:
+      DOCKER_STEPCA_INIT_NAME: Whale Sightings Dev CA
+      DOCKER_STEPCA_INIT_DNS_NAMES: localhost,step-ca,127.0.0.1
+      DOCKER_STEPCA_INIT_PROVISIONER_NAME: whale-sightings-admin
+      # Dev-only placeholder, same posture as hydra.yml's SECRETS_SYSTEM — committed
+      # intentionally, not a real secret. Regenerate and re-run `step-ca init` manually (which
+      # means wiping the step-ca-data volume and re-bootstrapping trust everywhere) before
+      # running this anywhere beyond a local/LAN reference deployment.
+      DOCKER_STEPCA_INIT_PASSWORD: youReallyNeedToChangeThisStepCaPassword
+    volumes:
+      - step-ca-data:/home/step
+
   # --- OAuth2 authorization server (Ory Hydra) + its login/consent UI ---
   #
   # hydra-sqlite-init -> hydra-migrate -> hydra, in that order. All four hydra* services
@@ -110,10 +134,11 @@ services:
       LOGIN_REMEMBER_SECONDS: "3600"
     volumes:
       # certs/rootCA.pem (written by scripts/setup-tls.sh) lets this container's outbound
-      # calls to https://hydra:4445 trust Hydra's mkcert-issued cert.
+      # calls to https://hydra:4445 trust Hydra's step-ca-issued cert.
       - ./certs:/certs:ro
     depends_on:
       - hydra
 
 volumes:
   hydra-sqlite:
+  step-ca-data:

@@ -1,4 +1,4 @@
-# Generates a locally-trusted TLS cert for the service using mkcert, so
+# Generates a locally-trusted TLS cert for the service using step-ca, so
 # browsers/curl/etc. validate it with no warnings or -k/--insecure flags.
 # Safe to re-run; each developer runs this once per machine.
 #
@@ -6,7 +6,7 @@
 # machine's LAN IP:
 #   .\scripts\setup-tls.ps1 192.168.1.23
 # See "TLS for remote clients" in the README for the full flow (the other
-# machine also needs to trust this machine's mkcert CA).
+# machine also needs to trust this machine's step-ca CA).
 param(
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$ExtraNames = @()
@@ -16,31 +16,76 @@ $ErrorActionPreference = "Stop"
 
 Set-Location (Join-Path $PSScriptRoot "..")
 
-if (-not (Get-Command mkcert -ErrorAction SilentlyContinue)) {
+if (-not (Get-Command step -ErrorAction SilentlyContinue)) {
     Write-Error @"
-mkcert is not installed. Install it, then re-run this script:
-  choco install mkcert
-  (or: scoop bucket add extras && scoop install mkcert)
-  (or: https://github.com/FiloSottile/mkcert#installation)
+step is not installed. Install it, then re-run this script:
+  choco install step-cli
+  (or: scoop install step)
+  (or: https://smallstep.com/docs/step-cli/installation)
 "@
 }
 
-# Creates (or reuses) a local CA and installs it into the OS/browser trust
-# stores. Nothing here is committed to git or shared between machines.
-mkcert -install
+# step-ca (unlike mkcert) is a live server, not an offline CLI - it has to be up before we can
+# bootstrap trust or request a cert from it.
+Write-Host "Starting step-ca..."
+docker compose up -d step-ca | Out-Null
+
+Write-Host "Waiting for step-ca to be ready..."
+for ($i = 0; $i -lt 15; $i++) {
+    docker compose exec -T step-ca step ca health --ca-url https://localhost:9000 `
+        --root /home/step/certs/root_ca.crt *> $null
+    if ($LASTEXITCODE -eq 0) { break }
+    Start-Sleep -Seconds 2
+}
+
+$RootFingerprint = (docker compose exec -T step-ca step certificate fingerprint /home/step/certs/root_ca.crt).Trim()
 
 New-Item -ItemType Directory -Force -Path certs | Out-Null
+
+# Writes ~/.step/config/defaults.json so later `step ca` commands don't need --ca-url/--root
+# repeated. --force skips the "overwrite?" prompt on re-run - safe, since it's just pointing
+# back at the same fingerprint each time, not trusting a new one blindly.
+step ca bootstrap --ca-url https://localhost:9000 --fingerprint $RootFingerprint --force | Out-Null
+
+# Unlike the bash version, this always re-runs the trust-store install rather than checking
+# first - step certificate install is safe to re-run, just occasionally prompts for
+# elevation again. (Windows cert-store lookups weren't verified here; if you find a reliable
+# way to check first, patch this to skip the prompt on repeat runs like scripts/setup-tls.sh
+# does.)
+Write-Host "Installing step-ca's root certificate into the trust store..."
+step certificate install "$HOME\.step\certs\root_ca.crt"
+
 # "hydra" is always included: it's the fixed Docker-network hostname login-consent uses to
 # reach Hydra's admin API (docker-compose.yml's service name for it), not a per-machine value.
-mkcert -cert-file certs/localhost.pem -key-file certs/localhost-key.pem localhost 127.0.0.1 "::1" hydra @ExtraNames
+$Sans = @("--san", "localhost", "--san", "127.0.0.1", "--san", "::1", "--san", "hydra")
+foreach ($name in $ExtraNames) {
+    $Sans += @("--san", $name)
+}
 
-# Also copy the CA cert (not the key) itself, so containers that need to make outbound TLS
-# calls to another mkcert-issued endpoint on the Docker network (e.g. login-consent calling
-# Hydra's admin API) can trust it without disabling verification.
-Copy-Item (Join-Path (mkcert -CAROOT) "rootCA.pem") certs/rootCA.pem
+# The provisioner password is read from the running container rather than duplicated here -
+# it's the same dev-only placeholder set via DOCKER_STEPCA_INIT_PASSWORD in docker-compose.yml.
+$PasswordFile = New-TemporaryFile
+try {
+    docker compose exec -T step-ca cat /home/step/secrets/password | Set-Content -NoNewline $PasswordFile
+
+    step ca certificate localhost certs/localhost.pem certs/localhost-key.pem `
+        @Sans `
+        --provisioner whale-sightings-admin `
+        --password-file $PasswordFile `
+        -f
+} finally {
+    Remove-Item $PasswordFile -ErrorAction SilentlyContinue
+}
+
+# Also copy the CA's root cert (not the intermediate's key, and not the root's key) itself, so
+# containers that need to make outbound TLS calls to another step-ca-issued endpoint on the
+# Docker network (e.g. login-consent calling Hydra's admin API) can trust it without disabling
+# verification.
+Copy-Item "$HOME\.step\certs\root_ca.crt" certs/rootCA.pem
 
 Write-Host ""
 Write-Host "TLS cert written to certs/. Run 'docker compose up --build' to pick it up."
+Write-Host "(Existing running containers need a restart to pick up a re-issued cert.)"
 
 if ($ExtraNames.Count -eq 0) {
     Write-Host ""
@@ -50,6 +95,6 @@ if ($ExtraNames.Count -eq 0) {
     Write-Host "the README for why that's nicer than an IP that changes with DHCP), e.g.:"
     Write-Host "  .\scripts\setup-tls.ps1 192.168.1.23"
     Write-Host "  .\scripts\setup-tls.ps1 whale-service.local"
-    Write-Host "Then copy `$(mkcert -CAROOT)\rootCA.pem (never rootCA-key.pem) to the other"
-    Write-Host "machine and trust it there - see 'TLS for remote clients' in the README."
+    Write-Host "Then copy certs\rootCA.pem (never anything from the step-ca-data Docker volume)"
+    Write-Host "to the other machine and trust it there - see 'TLS for remote clients' in the README."
 }
