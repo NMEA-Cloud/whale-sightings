@@ -20,8 +20,9 @@ development today; the service is intended to eventually deploy to AWS.
 
 - [Docker](https://docs.docker.com/get-docker/) (with Compose) — runs the service, Valkey,
   and Mosquitto.
-- [mkcert](https://github.com/FiloSottile/mkcert) — issues locally-trusted TLS certs (see
-  [TLS setup](#tls-setup-do-this-first) below).
+- [step CLI](https://smallstep.com/docs/step-cli/installation) — requests locally-trusted TLS
+  certs from the project's step-ca container (see [TLS setup](#tls-setup-do-this-first)
+  below).
 - Python 3.9+ on your host machine, as `python3` — used to serve the static clients. Not
   required to just run everything via `docker compose`; the service itself runs on Python
   3.12 inside its container regardless of what's installed on the host.
@@ -34,13 +35,14 @@ development today; the service is intended to eventually deploy to AWS.
 ## TLS setup (do this first)
 
 The service only accepts HTTPS — clients and `curl` need a certificate they'll actually
-trust, not a self-signed one that throws warnings. Certs are generated locally with
-[mkcert](https://github.com/FiloSottile/mkcert), which creates a CA and installs it into
-your OS/browser trust stores, then issues a `localhost` cert signed by it. Nothing here is
-committed to git or shared between machines — every developer runs this once:
+trust, not a self-signed one that throws warnings. Certs are issued by
+[step-ca](https://smallstep.com/docs/step-ca/) — a small CA server that runs as part of
+`docker-compose.yml` — which installs its root into your OS/browser trust stores, then issues
+a `localhost` cert signed by it. Nothing here is committed to git or shared between machines —
+every developer runs this once:
 
 ```bash
-# Install mkcert first if you don't have it: brew install mkcert / choco install mkcert / see the mkcert README
+# Install the step CLI first if you don't have it: brew install step / see https://smallstep.com/docs/step-cli/installation
 ./scripts/setup-tls.sh    # or scripts/setup-tls.ps1 on Windows PowerShell
 ```
 
@@ -85,17 +87,15 @@ to fix that:
    on your setup (some conference/guest WiFi blocks the multicast traffic mDNS relies on),
    fall back to the LAN IP.
 
-2. **Get the other machine to trust your mkcert CA.** Find it with `mkcert -CAROOT`
-   (prints a directory containing `rootCA.pem` and `rootCA-key.pem`). Copy only
-   `rootCA.pem` to the other machine — **never `rootCA-key.pem`**; anyone holding that key
-   can mint certs any of your trusting devices will accept for any domain. On the other
-   machine, either:
-   - install mkcert there too, point `CAROOT` at a directory containing the copied
-     `rootCA.pem`, and run `mkcert -install`, or
-   - import `rootCA.pem` directly into the OS/browser trust store (Keychain Access on
-     macOS, `certmgr`/Group Policy on Windows, `update-ca-certificates` plus each
-     browser's own store on Linux — Firefox in particular keeps its own NSS store
-     separate from the OS).
+2. **Get the other machine to trust your step-ca root.** `scripts/setup-tls.sh` already
+   writes it to `certs/rootCA.pem` — copy just that file to the other machine (never
+   anything from the `step-ca-data` Docker volume, which holds the CA's private key; anyone
+   holding that key can mint certs any of your trusting devices will accept for any domain).
+   On the other machine, import `rootCA.pem` directly into the OS/browser trust store
+   (Keychain Access on macOS, `certmgr`/Group Policy on Windows, `update-ca-certificates`
+   plus each browser's own store on Linux — Firefox in particular keeps its own NSS store
+   separate from the OS). The other machine doesn't need the `step` CLI or step-ca itself
+   installed — it's only ever trusting a cert here, not issuing one.
 
 This only covers the REST API's TLS trust — see "CORS for remote clients" below for the
 other piece.
