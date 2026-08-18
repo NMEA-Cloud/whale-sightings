@@ -8,14 +8,14 @@
 #
 # Usage: ./scripts/register-hydra-client.sh [admin-origin] [api-base]
 #   ./scripts/register-hydra-client.sh                                        # current dev defaults
-#   ./scripts/register-hydra-client.sh http://192.168.1.23:8081 https://192.168.1.23:8000
+#   ./scripts/register-hydra-client.sh http://192.168.1.23:8080 https://192.168.1.23:8000
 #
 # Requires the hydra service from infra/docker-compose.yml to be running.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-ADMIN_ORIGIN="${1:-http://localhost:8081}"
+ADMIN_ORIGIN="${1:-http://localhost:8080}"
 API_BASE="${2:-https://api.dev.wombat-sightings.org:8000}"
 CLIENT_ID="whale-sightings-admin"
 

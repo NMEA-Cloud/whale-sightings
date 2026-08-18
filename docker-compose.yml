@@ -65,6 +65,43 @@ services:
       mqtt:
         condition: service_healthy
 
+  # --- Static clients ---
+  #
+  # config.js is templated from the API_BASE/MQTT_WS_URL env vars below at container start
+  # (see each client's docker-entrypoint.sh) rather than baked in at build time, so the same
+  # image works for dev vs. booth by changing environment (e.g. via an override file, the
+  # same pattern docker-compose.override.yml already uses for CORS_ORIGINS) rather than
+  # rebuilding. client-mqtt/client-long-poll build with the repo root as context so their
+  # Dockerfiles can also reach shared/, a sibling directory otherwise out of build-context
+  # reach — see .dockerignore.
+
+  client-admin:
+    build:
+      context: ./client-admin
+    ports:
+      - "8080:8080"
+    environment:
+      API_BASE: https://localhost:8000
+
+  client-mqtt:
+    build:
+      context: .
+      dockerfile: client-mqtt/Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      API_BASE: https://localhost:8000
+      MQTT_WS_URL: ws://localhost:9001
+
+  client-long-poll:
+    build:
+      context: .
+      dockerfile: client-long-poll/Dockerfile
+    ports:
+      - "8082:8082"
+    environment:
+      API_BASE: https://localhost:8000
+
 networks:
   whale-sightings-net:
     external: true
