@@ -13,14 +13,16 @@ development today; the service is intended to eventually deploy to AWS.
 - `client-admin/` — vanilla HTML/CSS/JS admin client (stats + demo data loading), also static, no build step.
 - `hydra/` — config for the self-hosted Ory Hydra OAuth2 authorization server.
 - `login-consent/` — small FastAPI app serving Hydra's login/consent screens.
+- `dnsmasq/` — config for the `dns` service (see `infra/docker-compose.yml`) that resolves
+  the `dev.`-subdomain hostnames below.
 - `docker-compose.yml` — the **app** project (Compose project name `wombat-sightings`): runs
   `service`, `valkey`, and `mqtt`. Neither client is containerized.
 - `infra/docker-compose.yml` — the **infra** project (Compose project name `booth-boat`): runs
-  `step-ca`, `hydra`, and `login-consent`. Split into its own project so this rehearses the
-  eventual move of this infrastructure onto a separate physical machine (a Raspberry Pi acting
-  as a trade-show LAN router) — see that file's header comment. Joined to the app project via
-  the `whale-sightings-net` external Docker network so `service` can still resolve `hydra` by
-  name for JWKS fetches.
+  `step-ca`, `hydra`, `login-consent`, and `dns`. Split into its own project so this rehearses
+  the eventual move of this infrastructure onto a separate physical machine (a Raspberry Pi
+  acting as a trade-show LAN router) — see that file's header comment. Joined to the app
+  project via the `whale-sightings-net` external Docker network so `service` can still
+  resolve `hydra` by name for JWKS fetches.
 
 ## Prerequisites
 
@@ -71,20 +73,28 @@ the app project with `./scripts/dev-up.sh`, or independently with
 
 Hydra and the service identify themselves as `auth.dev.booth-boat.org` and
 `api.dev.wombat-sightings.org` respectively (not `localhost`) — this is what
-`scripts/setup-tls.sh` issues certs for by default. Since these aren't real public DNS names
-yet, add them to `/etc/hosts` (or the Windows equivalent), pointing at wherever Hydra/service
-actually run — `127.0.0.1` for local dev:
+`scripts/setup-tls.sh` issues certs for by default. Since these aren't real public DNS names,
+the infra project runs a `dns` service (dnsmasq — see `dnsmasq/whale-sightings.conf` for the
+actual records) that answers for them and forwards everything else upstream normally. Point
+your machine's resolver at it — on macOS, a scoped resolver (so only these two domains go
+through it, not all DNS on the machine) via `/etc/resolver/`:
 
-```
-127.0.0.1 auth.dev.booth-boat.org
-127.0.0.1 api.dev.wombat-sightings.org
+```bash
+sudo mkdir -p /etc/resolver
+sudo sh -c 'printf "nameserver 127.0.0.1\nport 53\n" > /etc/resolver/booth-boat.org'
+sudo sh -c 'printf "nameserver 127.0.0.1\nport 53\n" > /etc/resolver/wombat-sightings.org'
 ```
 
-A DNS server that does this automatically for every client on a LAN is planned but not built
-yet — `/etc/hosts` is the manual stand-in until then. The client apps themselves
-(`client-admin` etc.) are unaffected by any of this — they still talk to the service via
-whatever `apiBase` is configured in their own `config.js` (`localhost` by default) and
-discover the actual issuer/audience dynamically at login time — see "OAuth2 login for the
+(On Windows/Linux, or if the `dns` container runs on a different machine on the LAN, point
+that platform's resolver/DNS settings at wherever it's reachable instead.) A real DHCP+DNS
+setup for the trade-show LAN (the same dnsmasq container will likely grow a `dhcp-range=`)
+is planned for when the Raspberry Pi hardware is available to test it against a real network
+interface — see the roadmap.
+
+The client apps themselves (`client-admin` etc.) are unaffected by any of this — they still
+talk to the service via whatever `apiBase` is configured in their own `config.js`
+(`localhost` by default) and discover the actual issuer/audience dynamically at login time —
+see "OAuth2 login for the
 admin client" below.
 
 Browsers trust the result with no warnings. On Windows, `curl` uses the Schannel TLS
@@ -513,3 +523,9 @@ This project is being built in stages:
    same API, same UI, two different mechanisms for a client to learn something changed.
    MQTT topic segmentation (so a client can subscribe to only what it cares about) is a
    related, still-open follow-up.
+8. **In progress**: moving the infra project (`infra/docker-compose.yml` — Hydra, step-ca,
+   `dns`) onto a Raspberry Pi acting as the router for an ad hoc trade-show LAN. TLS
+   (step-ca, **done**) and DNS (**done**) are usable in dev today; DHCP is planned for the
+   same `dns` (dnsmasq) service but deliberately untested until the Pi hardware is available
+   to try it against a real network interface, rather than risk conflicting with an existing
+   router's DHCP server on a shared dev network.

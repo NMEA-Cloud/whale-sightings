@@ -37,6 +37,28 @@ services:
     volumes:
       - step-ca-data:/home/step
 
+  # --- dns: resolves the dev.-subdomain hostnames, replacing manual /etc/hosts entries ---
+  #
+  # dockurr/dnsmasq's entrypoint builds its config from a sensible default template plus the
+  # DNS1/DNS2 upstream servers below — we only need to supply the small addition in
+  # dnsmasq.conf's dnsmasq/ directory (mounted into /etc/dnsmasq.d/, which the default
+  # template already merges in). See dnsmasq/whale-sightings.conf for the actual records.
+  # DHCP is a planned future addition to this same service — out of scope until the Raspberry
+  # Pi hardware is available to test it against a real network interface (see the roadmap).
+
+  dns:
+    image: dockurr/dnsmasq:2.93
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+    environment:
+      DNS1: "1.1.1.1"
+      DNS2: "1.0.0.1"
+    volumes:
+      - ../dnsmasq/whale-sightings.conf:/etc/dnsmasq.d/whale-sightings.conf:ro
+
   # --- OAuth2 authorization server (Ory Hydra) + its login/consent UI ---
   #
   # hydra-sqlite-init -> hydra-migrate -> hydra, in that order. All four hydra* services
