@@ -35,7 +35,7 @@ def create_app() -> FastAPI:
         allow_origin_regex=settings.cors_origin_regex,
         allow_methods=["*"],
         allow_headers=["*"],
-        # Without this, fetch() in admin/app.js can't read WWW-Authenticate cross-origin
+        # Without this, fetch() in client-admin/app.js can't read WWW-Authenticate cross-origin
         # even though it's on the wire — needed to discover resource_metadata on a 401.
         expose_headers=["WWW-Authenticate"],
     )

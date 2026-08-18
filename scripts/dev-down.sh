@@ -18,8 +18,8 @@ fi
 echo "Stopping docker compose..."
 docker compose down || true
 
-echo "Stopping admin/shared/client static servers..."
-tmux send-keys -t "$SESSION:admin" C-c 2>/dev/null || true
+echo "Stopping client-admin/shared/client static servers..."
+tmux send-keys -t "$SESSION:client-admin" C-c 2>/dev/null || true
 tmux send-keys -t "$SESSION:shared" C-c 2>/dev/null || true
 tmux send-keys -t "$SESSION:client-mqtt" C-c 2>/dev/null || true
 tmux send-keys -t "$SESSION:client-long-poll" C-c 2>/dev/null || true

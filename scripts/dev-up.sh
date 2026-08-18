@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Starts the full dev environment in a tmux session — one window each for docker compose,
-# the admin static server, the shared-client-code static server, the MQTT client static
+# the client-admin static server, the shared-client-code static server, the MQTT client static
 # server, the long-poll client static server, and a free shell (with service/.venv
 # activated). Works from any terminal app (tmux owns the panes, not the surrounding app).
 # Safe to re-run: if the session is already running the compose stack, this just attaches to
@@ -55,7 +55,7 @@ tmux new-session -d -s "$SESSION" -n docker -c "$REPO_ROOT" "docker compose up -
 # see the header comment), keep the pane around showing its last output instead of the
 # window silently vanishing, which is what made the stale-session case above hard to notice.
 tmux set-option -t "$SESSION" remain-on-exit on
-tmux new-window -t "$SESSION" -n admin -c "$REPO_ROOT/admin" "python3 -m http.server 8081"
+tmux new-window -t "$SESSION" -n client-admin -c "$REPO_ROOT/client-admin" "python3 -m http.server 8081"
 tmux new-window -t "$SESSION" -n shared -c "$REPO_ROOT/shared" "python3 -m http.server 8083"
 tmux new-window -t "$SESSION" -n client-mqtt -c "$REPO_ROOT/client-mqtt" "python3 -m http.server 8080"
 tmux new-window -t "$SESSION" -n client-long-poll -c "$REPO_ROOT/client-long-poll" "python3 -m http.server 8082"
@@ -64,7 +64,7 @@ tmux send-keys -t "$SESSION:shell" "source service/.venv/bin/activate" Enter
 
 tmux select-window -t "$SESSION:docker"
 
-echo "Started tmux session '$SESSION': docker | admin | shared | client-mqtt | client-long-poll | shell"
+echo "Started tmux session '$SESSION': docker | client-admin | shared | client-mqtt | client-long-poll | shell"
 echo "Switch windows with Ctrl-b <number>, detach with Ctrl-b d."
 echo "Tear down with ./scripts/dev-down.sh"
 

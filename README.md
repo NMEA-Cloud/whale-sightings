@@ -10,7 +10,7 @@ development today; the service is intended to eventually deploy to AWS.
 - `client-mqtt/` — vanilla HTML/CSS/JS public client, live-updated via MQTT over WebSockets, served by a plain static file server (no build step).
 - `client-long-poll/` — same public client, live-updated via `GET /sightings/poll` long-polling instead of MQTT.
 - `shared/` — rendering/form/filter JS shared by `client-mqtt/` and `client-long-poll/`; see "Serving the shared client code" below.
-- `admin/` — vanilla HTML/CSS/JS admin client (stats + demo data loading), also static, no build step.
+- `client-admin/` — vanilla HTML/CSS/JS admin client (stats + demo data loading), also static, no build step.
 - `hydra/` — config for the self-hosted Ory Hydra OAuth2 authorization server.
 - `login-consent/` — small FastAPI app serving Hydra's login/consent screens.
 - `docker-compose.yml` — runs `service`, `valkey`, `mqtt`, `hydra`, and `login-consent`.
@@ -326,14 +326,14 @@ with one click, and can clear all sightings to reset between demos. Run it on a
 different port than the public client:
 
 ```bash
-cd admin
+cd client-admin
 python3 -m http.server 8081
 ```
 
 Then open http://localhost:8081. Like the public client, it points at the service via
-`API_BASE` in `admin/app.js` (defaulting to `https://localhost:8000`), overridable the
-same way — copy `admin/config.example.js` to `admin/config.js` and edit it. The canned
-scenarios live in the `SCENARIOS` array in `admin/app.js` — edit or add to them for your
+`API_BASE` in `client-admin/app.js` (defaulting to `https://localhost:8000`), overridable the
+same way — copy `client-admin/config.example.js` to `client-admin/config.js` and edit it. The canned
+scenarios live in the `SCENARIOS` array in `client-admin/app.js` — edit or add to them for your
 own demo needs.
 
 Deleting sightings (individually or via "Clear all sightings") requires signing in — see
