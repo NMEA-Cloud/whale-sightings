@@ -1,0 +1,6 @@
+# Applies to builds whose context is the repo root (client-mqtt/, client-long-poll/ — see
+# docker-compose.yml). service/, login-consent/, and client-admin/ each build with their own
+# directory as context and have their own .dockerignore instead.
+client-mqtt/config.js
+client-long-poll/config.js
+.git/
