@@ -13,8 +13,14 @@ development today; the service is intended to eventually deploy to AWS.
 - `client-admin/` — vanilla HTML/CSS/JS admin client (stats + demo data loading), also static, no build step.
 - `hydra/` — config for the self-hosted Ory Hydra OAuth2 authorization server.
 - `login-consent/` — small FastAPI app serving Hydra's login/consent screens.
-- `docker-compose.yml` — runs `service`, `valkey`, `mqtt`, `hydra`, and `login-consent`.
-  Neither client is containerized.
+- `docker-compose.yml` — the **app** project (Compose project name `wombat-sightings`): runs
+  `service`, `valkey`, and `mqtt`. Neither client is containerized.
+- `infra/docker-compose.yml` — the **infra** project (Compose project name `booth-boat`): runs
+  `step-ca`, `hydra`, and `login-consent`. Split into its own project so this rehearses the
+  eventual move of this infrastructure onto a separate physical machine (a Raspberry Pi acting
+  as a trade-show LAN router) — see that file's header comment. Joined to the app project via
+  the `whale-sightings-net` external Docker network so `service` can still resolve `hydra` by
+  name for JWKS fetches.
 
 ## Prerequisites
 
@@ -36,19 +42,50 @@ development today; the service is intended to eventually deploy to AWS.
 
 The service only accepts HTTPS — clients and `curl` need a certificate they'll actually
 trust, not a self-signed one that throws warnings. Certs are issued by
-[step-ca](https://smallstep.com/docs/step-ca/) — a small CA server that runs as part of
-`docker-compose.yml` — which installs its root into your OS/browser trust stores, then issues
-a `localhost` cert signed by it. Nothing here is committed to git or shared between machines —
-every developer runs this once:
+[step-ca](https://smallstep.com/docs/step-ca/) — a small CA server that runs as part of the
+infra project (`infra/docker-compose.yml`) — which installs its root into your OS/browser
+trust stores, then issues a cert covering `localhost`, `hydra`, and the two hostnames below,
+signed by it. Nothing here is committed to git or shared between machines — every developer
+runs this once:
 
 ```bash
 # Install the step CLI first if you don't have it: brew install step / see https://smallstep.com/docs/step-cli/installation
+docker network create whale-sightings-net    # one-time: shared network, see "Infra project" below
 ./scripts/setup-tls.sh    # or scripts/setup-tls.ps1 on Windows PowerShell
 ```
 
 This writes `certs/localhost.pem` and `certs/localhost-key.pem` (gitignored). Re-run it any
-time; it's idempotent. `docker-compose.yml` mounts `certs/` into the service container, and
-`uvicorn` (both in Docker and when run directly, see below) is configured to use them.
+time; it's idempotent — running containers need a restart afterward to pick up a re-issued
+cert. `docker-compose.yml`/`infra/docker-compose.yml` mount `certs/` into the relevant
+containers, and `uvicorn` (both in Docker and when run directly, see below) is configured to
+use them.
+
+### Infra project (Hydra, login-consent, step-ca)
+
+`hydra` and `login-consent` (plus `step-ca`) live in a separate Compose project,
+`infra/docker-compose.yml` — see that file's header comment for why. It's joined to the app
+project (`docker-compose.yml`) via the `whale-sightings-net` external Docker network created
+above, so `service` can still resolve `hydra` by name for JWKS fetches. Bring it up alongside
+the app project with `./scripts/dev-up.sh`, or independently with
+`docker compose -f infra/docker-compose.yml up --build`.
+
+Hydra and the service identify themselves as `auth.dev.booth-boat.org` and
+`api.dev.wombat-sightings.org` respectively (not `localhost`) — this is what
+`scripts/setup-tls.sh` issues certs for by default. Since these aren't real public DNS names
+yet, add them to `/etc/hosts` (or the Windows equivalent), pointing at wherever Hydra/service
+actually run — `127.0.0.1` for local dev:
+
+```
+127.0.0.1 auth.dev.booth-boat.org
+127.0.0.1 api.dev.wombat-sightings.org
+```
+
+A DNS server that does this automatically for every client on a LAN is planned but not built
+yet — `/etc/hosts` is the manual stand-in until then. The client apps themselves
+(`client-admin` etc.) are unaffected by any of this — they still talk to the service via
+whatever `apiBase` is configured in their own `config.js` (`localhost` by default) and
+discover the actual issuer/audience dynamically at login time — see "OAuth2 login for the
+admin client" below.
 
 Browsers trust the result with no warnings. On Windows, `curl` uses the Schannel TLS
 backend, which hard-fails when it can't check a certificate's revocation status — locally
@@ -342,10 +379,9 @@ as the public client.
 
 ## OAuth2 login for the admin client
 
-`docker-compose.yml` also runs a self-hosted Ory Hydra (the OAuth2 authorization server)
-plus a small `login-consent` app for its login screen — both come up with everything else
-via `docker compose up --build`. One extra one-time step registers the admin client with
-Hydra:
+The infra project (`infra/docker-compose.yml` — see "Infra project" above) runs a
+self-hosted Ory Hydra (the OAuth2 authorization server) plus a small `login-consent` app for
+its login screen. One extra one-time step registers the admin client with Hydra:
 
 ```bash
 ./scripts/register-hydra-client.sh
@@ -353,13 +389,16 @@ Hydra:
 
 Safe to re-run any time; it deletes and re-creates the client. Re-run it if you change
 where the admin client or the service is served from (pass the admin origin and API base
-as arguments — see the script's header comment) — same idea as re-running `setup-tls.sh`
-after your address changes, which is one more reason to prefer a resolvable hostname over
-a LAN IP for the service (see "TLS for remote clients" above): it doesn't change.
+as arguments — see the script's header comment). Hydra rejects an authorize request whose
+requested audience isn't in the client's registered list, so this must stay in sync with
+`service`'s `OAUTH_EXPECTED_AUDIENCE` in `docker-compose.yml` — a mismatch here shows up as
+a generic "the OAuth 2.0 Authorization request must be aborted" (or, more specifically,
+"Requested audience ... has not been whitelisted") error during login, not a build/connection
+failure.
 
 With that done, clicking "Clear all sightings" in the admin client with no active session
 redirects to a login screen (`admin`/`change-me` by default — see `ADMIN_USERNAME`/
-`ADMIN_PASSWORD` in `docker-compose.yml`), then redirects back once you're signed in. The
+`ADMIN_PASSWORD` in `infra/docker-compose.yml`), then redirects back once you're signed in. The
 delete you clicked is **not** retried automatically — click it again once you're back,
 and it succeeds this time. This two-step flow is deliberate: it's what makes the
 authorization boundary visible in a demo, rather than hiding it behind an automatic retry.

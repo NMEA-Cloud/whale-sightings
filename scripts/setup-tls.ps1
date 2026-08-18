@@ -28,17 +28,17 @@ step is not installed. Install it, then re-run this script:
 # step-ca (unlike mkcert) is a live server, not an offline CLI - it has to be up before we can
 # bootstrap trust or request a cert from it.
 Write-Host "Starting step-ca..."
-docker compose up -d step-ca | Out-Null
+docker compose -f infra/docker-compose.yml up -d step-ca | Out-Null
 
 Write-Host "Waiting for step-ca to be ready..."
 for ($i = 0; $i -lt 15; $i++) {
-    docker compose exec -T step-ca step ca health --ca-url https://localhost:9000 `
+    docker compose -f infra/docker-compose.yml exec -T step-ca step ca health --ca-url https://localhost:9000 `
         --root /home/step/certs/root_ca.crt *> $null
     if ($LASTEXITCODE -eq 0) { break }
     Start-Sleep -Seconds 2
 }
 
-$RootFingerprint = (docker compose exec -T step-ca step certificate fingerprint /home/step/certs/root_ca.crt).Trim()
+$RootFingerprint = (docker compose -f infra/docker-compose.yml exec -T step-ca step certificate fingerprint /home/step/certs/root_ca.crt).Trim()
 
 New-Item -ItemType Directory -Force -Path certs | Out-Null
 
@@ -57,7 +57,12 @@ step certificate install "$HOME\.step\certs\root_ca.crt"
 
 # "hydra" is always included: it's the fixed Docker-network hostname login-consent uses to
 # reach Hydra's admin API (docker-compose.yml's service name for it), not a per-machine value.
-$Sans = @("--san", "localhost", "--san", "127.0.0.1", "--san", "::1", "--san", "hydra")
+# auth.dev.booth-boat.org/api.dev.wombat-sightings.org are also always included: they're
+# Hydra's/service's fixed browser-facing identities (URLS_SELF_ISSUER, PUBLIC_API_BASE_URL -
+# see docker-compose.yml/infra/docker-compose.yml), not per-machine values either. Omitting
+# them here would silently break the OAuth2 login flow on the next cert re-issuance.
+$Sans = @("--san", "localhost", "--san", "127.0.0.1", "--san", "::1", "--san", "hydra", `
+    "--san", "auth.dev.booth-boat.org", "--san", "api.dev.wombat-sightings.org")
 foreach ($name in $ExtraNames) {
     $Sans += @("--san", $name)
 }
@@ -66,7 +71,7 @@ foreach ($name in $ExtraNames) {
 # it's the same dev-only placeholder set via DOCKER_STEPCA_INIT_PASSWORD in docker-compose.yml.
 $PasswordFile = New-TemporaryFile
 try {
-    docker compose exec -T step-ca cat /home/step/secrets/password | Set-Content -NoNewline $PasswordFile
+    docker compose -f infra/docker-compose.yml exec -T step-ca cat /home/step/secrets/password | Set-Content -NoNewline $PasswordFile
 
     step ca certificate localhost certs/localhost.pem certs/localhost-key.pem `
         @Sans `
@@ -84,7 +89,9 @@ try {
 Copy-Item "$HOME\.step\certs\root_ca.crt" certs/rootCA.pem
 
 Write-Host ""
-Write-Host "TLS cert written to certs/. Run 'docker compose up --build' to pick it up."
+Write-Host "TLS cert written to certs/. Run 'docker compose up --build' (app project) and"
+Write-Host "'docker compose -f infra/docker-compose.yml up --build' (infra project) to pick it"
+Write-Host "up. (scripts/dev-up.sh, which brings up both automatically, is bash-only for now.)"
 Write-Host "(Existing running containers need a restart to pick up a re-issued cert.)"
 
 if ($ExtraNames.Count -eq 0) {
