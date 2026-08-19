@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Whale Sightings (WebSocket)</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <h1>Whale Sightings (WebSocket)</h1>
+  <p class="note">
+    Live-updated via a direct WebSocket connection to the service itself
+    (<code>GET /sightings/ws</code>) — no MQTT broker in between, unlike the "MQTT" client,
+    and no repeated polling, unlike the "Long-Poll" client. A third way for a client to learn
+    something changed.
+  </p>
+
+  <div class="layout">
+  <div class="column-main">
+
+  <section class="panel">
+    <h2>Report a sighting</h2>
+    <form id="sighting-form">
+      <label for="latitude">Latitude</label>
+      <input id="latitude" type="number" step="any" min="-90" max="90" required />
+
+      <label for="longitude">Longitude</label>
+      <input id="longitude" type="number" step="any" min="-180" max="180" required />
+
+      <button id="locate-button" type="button">Use current location</button>
+      <button id="pick-location-button" type="button">Pick on map</button>
+
+      <label for="datetime">Date/time</label>
+      <input id="datetime" type="datetime-local" step="1" required />
+
+      <button id="now-button" type="button">Use current time</button>
+
+      <label for="status">Status</label>
+      <select id="status" required>
+        <option value="alive">Alive</option>
+        <option value="dead">Dead</option>
+        <option value="distressed">Distressed</option>
+        <option value="unknown">Unknown</option>
+      </select>
+
+      <label for="type">Type</label>
+      <input id="type" type="text" required />
+
+      <label for="species">Species</label>
+      <input id="species" type="text" required />
+
+      <label for="name">Name (optional)</label>
+      <input id="name" type="text" />
+
+      <label for="method">Method</label>
+      <select id="method" required>
+        <option value="manual-report">Manual report</option>
+        <option value="other">Other</option>
+      </select>
+
+      <label for="comments">Comments</label>
+      <textarea id="comments" rows="3"></textarea>
+
+      <button type="submit">Submit sighting</button>
+      <p id="form-status" class="status" role="status"></p>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Look up a sighting</h2>
+    <div class="filter-row">
+      <button id="lookup-button" type="button">Look up</button>
+      <label for="lookup-id">Sighting ID</label>
+      <input id="lookup-id" type="text" placeholder="uuid" />
+    </div>
+    <p id="lookup-status" class="status" role="status"></p>
+    <details id="lookup-details" class="lookup-details" hidden>
+      <summary>Sighting details</summary>
+      <pre id="lookup-result" class="lookup-result"></pre>
+    </details>
+  </section>
+
+  <section class="panel">
+    <h2>All sightings</h2>
+    <div class="filter-row">
+      <label for="since-hours-filter">Show sightings from the last</label>
+      <input id="since-hours-filter" type="number" min="0" step="any" placeholder="e.g. 24" />
+      <span>hours (blank = all)</span>
+    </div>
+    <div class="filter-row">
+      <label for="radius-nm-filter">Within</label>
+      <input id="radius-nm-filter" type="number" min="0" step="any" placeholder="e.g. 10" />
+      <span>nautical miles of</span>
+      <input id="radius-lat-filter" type="number" step="any" min="-90" max="90" placeholder="lat" />
+      <input id="radius-lon-filter" type="number" step="any" min="-180" max="180" placeholder="lon" />
+      <button id="locate-filter-button" type="button">Use current location</button>
+      <button id="pick-filter-location-button" type="button">Pick on map</button>
+      <span>(all three fields required, blank = no location filter)</span>
+    </div>
+    <button id="refresh-button" type="button">Refresh</button>
+    <button id="clear-filter-button" type="button">Show all</button>
+    <p id="list-status" class="status" role="status"></p>
+    <p class="note">
+      Delete is intentionally left unauthenticated here — this request gets rejected with
+      a 401 (see the OAuth2 section in the README); only the admin client can actually
+      delete a sighting.
+    </p>
+    <table id="sightings-table">
+      <thead>
+        <tr>
+          <th>When</th>
+          <th>Species</th>
+          <th>Name</th>
+          <th>Status</th>
+          <th>Method</th>
+          <th>Location</th>
+          <th>Comments</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="sightings-body"></tbody>
+    </table>
+  </section>
+
+  </div>
+
+  <aside class="column-map">
+    <div id="map" class="map"></div>
+  </aside>
+
+  </div>
+
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+  <script src="config.js"></script>
+  <!-- Copied in at build time from shared/ (see client-ws/Dockerfile) — same-origin, not
+       loaded cross-origin like the Leaflet script above. -->
+  <script src="sightings-shared.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

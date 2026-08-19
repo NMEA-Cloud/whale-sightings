@@ -74,6 +74,32 @@ def test_failed_delete_does_not_publish(client, mqtt_publisher):
     assert mqtt_publisher.calls == []
 
 
+def test_create_sighting_broadcasts_ws_created_event(client, ws_broadcaster):
+    response = client.post("/sightings", json=sample_payload_dict())
+    body = response.json()
+
+    assert ws_broadcaster.calls == [("created", body["id"])]
+
+    client.delete(f"/sightings/{body['id']}")
+
+
+def test_delete_sighting_broadcasts_ws_deleted_event(client, ws_broadcaster):
+    body = client.post("/sightings", json=sample_payload_dict()).json()
+    ws_broadcaster.calls.clear()  # ignore the "created" broadcast from setup above
+
+    response = client.delete(f"/sightings/{body['id']}")
+
+    assert response.status_code == 204
+    assert ws_broadcaster.calls == [("deleted", body["id"])]
+
+
+def test_failed_delete_does_not_broadcast_ws(client, ws_broadcaster):
+    response = client.delete("/sightings/00000000-0000-0000-0000-000000000000")
+
+    assert response.status_code == 404
+    assert ws_broadcaster.calls == []
+
+
 def test_create_sighting_rejects_unknown_fields(client):
     payload = sample_payload_dict()
     payload["id"] = "should-not-be-allowed"

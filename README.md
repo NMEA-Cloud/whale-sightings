@@ -9,14 +9,15 @@ the service is intended to eventually deploy to AWS.
 - `service/` — FastAPI application, persists sightings in Valkey, runs in Docker.
 - `client-mqtt/` — vanilla HTML/CSS/JS public client, live-updated via MQTT over WebSockets, runs in Docker.
 - `client-long-poll/` — same public client, live-updated via `GET /sightings/poll` long-polling instead of MQTT.
-- `shared/` — rendering/form/filter JS shared by `client-mqtt/` and `client-long-poll/`, copied into each's image at build time — see "Running the clients" below.
+- `client-ws/` — same public client, live-updated via a direct WebSocket connection to the service (`GET /sightings/ws`) instead of MQTT or long-polling.
+- `shared/` — rendering/form/filter JS shared by `client-mqtt/`, `client-long-poll/`, and `client-ws/`, copied into each's image at build time — see "Running the clients" below.
 - `client-admin/` — vanilla HTML/CSS/JS admin client (stats + demo data loading), also runs in Docker.
 - `hydra/` — config for the self-hosted Ory Hydra OAuth2 authorization server.
 - `login-consent/` — small FastAPI app serving Hydra's login/consent screens.
 - `dnsmasq/` — config for the `dns` service (see `infra/docker-compose.yml`) that resolves
   the `dev.`-subdomain hostnames below.
 - `docker-compose.yml` — the **app** project (Compose project name `wombat-sightings`): runs
-  `service`, `valkey`, `mqtt`, and all three static clients.
+  `service`, `valkey`, `mqtt`, and all four static clients.
 - `infra/docker-compose.yml` — the **infra** project (Compose project name `booth-boat`): runs
   `step-ca`, `hydra`, `login-consent`, and `dns`. Split into its own project so this rehearses
   the eventual move of this infrastructure onto a separate physical machine (a Raspberry Pi
@@ -35,7 +36,7 @@ the service is intended to eventually deploy to AWS.
 | 8080 | `client-admin` | localhost | app | HTTP |
 | 8081 | `client-mqtt` | localhost | app | HTTP |
 | 8082 | `client-long-poll` | localhost | app | HTTP |
-| 8083 | *(reserved)* | — | app | `client-ws`, not yet built — see the roadmap |
+| 8083 | `client-ws` | localhost | app | HTTP |
 | 9000 | `step-ca` | localhost | infra | HTTPS (CA API) |
 | 53 | `dns` | localhost | infra | DNS, tcp + udp |
 | 4444 | `hydra` | auth.dev.booth-boat.org | infra | HTTPS, public (OAuth2/OIDC endpoints, discovery doc) — also reachable at localhost:4444 |
@@ -183,7 +184,7 @@ how you're running the service:
 Either way, add the remote client's actual origin (scheme + host + port it's served from),
 e.g. `http://192.168.1.23:8080` or, using a resolvable hostname as set up above,
 `http://whale-service.local:8080`, as an extra comma-separated entry alongside the existing
-`http://localhost:8080,http://localhost:8081,http://localhost:8082`. If you're running the
+`http://localhost:8080,http://localhost:8081,http://localhost:8082,http://localhost:8083`. If you're running the
 service via Docker, remember it needs a rebuild (`docker compose up --build`) to pick up
 the change, same as any other edit to `docker-compose.yml`.
 
@@ -202,7 +203,7 @@ machine's IP, set `CORS_ORIGIN_REGEX` instead (or in addition) — it's matched 
 `Origin` header alongside `CORS_ORIGINS`, e.g.:
 
 ```
-CORS_ORIGIN_REGEX=^http://192\.168\.0\.\d{1,3}:(8080|8081|8082)$
+CORS_ORIGIN_REGEX=^http://192\.168\.0\.\d{1,3}:(8080|8081|8082|8083)$
 ```
 
 ## Running the service
@@ -307,26 +308,28 @@ curl https://localhost:8000/sightings/stats
 
 ## Running the clients
 
-All three static clients (`client-mqtt/`, `client-long-poll/`, `client-admin/`) build and run
-as part of `docker-compose.yml` — `docker compose up --build` (or `./scripts/dev-up.sh`)
-brings them up along with everything else, no separate static-file-server steps needed.
-`client-mqtt`/`client-long-poll` also get `shared/sightings-shared.js` — the rendering/form/
-filter code common to both — copied into their image at build time (see their Dockerfiles),
-so only each client's own live-sync mechanism (MQTT vs. long-polling) needs reading to see
-what's different between them.
+All four static clients (`client-mqtt/`, `client-long-poll/`, `client-ws/`, `client-admin/`)
+build and run as part of `docker-compose.yml` — `docker compose up --build` (or
+`./scripts/dev-up.sh`) brings them up along with everything else, no separate
+static-file-server steps needed. `client-mqtt`/`client-long-poll`/`client-ws` also get
+`shared/sightings-shared.js` — the rendering/form/filter code common to all three — copied
+into their image at build time (see their Dockerfiles), so only each client's own live-sync
+mechanism (MQTT, long-polling, or a direct WebSocket) needs reading to see what's different
+between them.
 
-Each client's `config.js` is templated from `API_BASE`/`MQTT_WS_URL` environment variables at
-container start (see e.g. `client-mqtt/docker-entrypoint.sh`) rather than a file you copy and
-edit by hand — to point a client at a service running elsewhere, edit the relevant service's
-`environment:` block in `docker-compose.yml` (or an override file, same pattern
-`docker-compose.override.yml` already uses for `CORS_ORIGINS`) and restart; no rebuild needed,
-since the same image just gets different environment.
+Each client's `config.js` is templated from environment variables (`API_BASE` and, for
+`client-mqtt`/`client-ws`, `MQTT_WS_URL`/`WS_URL`) at container start (see e.g.
+`client-mqtt/docker-entrypoint.sh`) rather than a file you copy and edit by hand — to point a
+client at a service running elsewhere, edit the relevant service's `environment:` block in
+`docker-compose.yml` (or an override file, same pattern `docker-compose.override.yml` already
+uses for `CORS_ORIGINS`) and restart; no rebuild needed, since the same image just gets
+different environment.
 
 (For quick edits without rebuilding, any client can still be run directly —
-`cd client-mqtt && python3 -m http.server 8081`, etc. `client-mqtt`/`client-long-poll` need
-`shared/sightings-shared.js` copied alongside `index.html` first, since that normally happens
-at Docker build time; without a `config.js` created by hand from `config.example.js`, `app.js`
-falls back to its hardcoded `localhost` defaults.)
+`cd client-mqtt && python3 -m http.server 8081`, etc. `client-mqtt`/`client-long-poll`/
+`client-ws` need `shared/sightings-shared.js` copied alongside `index.html` first, since that
+normally happens at Docker build time; without a `config.js` created by hand from
+`config.example.js`, `app.js` falls back to its hardcoded `localhost` defaults.)
 
 ### The MQTT client
 
@@ -365,13 +368,31 @@ Open http://localhost:8082. Open your browser's Network tab and watch: each
 match (as soon as one exists) or `204` on timeout — either way, the client immediately issues
 the next one. No WebSocket connection appears, unlike the MQTT client's tab.
 
-### Try the live sync, across both clients
+### The WebSocket client
 
-Open the MQTT client (`http://localhost:8081`) and the long-poll client
-(`http://localhost:8082`) side by side. Submit a sighting in either — it appears in both,
-via two completely different mechanisms. Deleting works the same way (currently only for the
-MQTT client — see the roadmap). This is the whole point of having both: same API, same UI,
-two different ways a client can find out something changed.
+A third live-sync mechanism: a direct WebSocket connection to the service itself
+(`GET /sightings/ws` — see `service/app/routers/sightings.py`'s `sightings_ws` and
+`app/ws.py`'s `ConnectionWsBroadcaster`), no broker in between at all — unlike `client-mqtt`,
+which depends on the Mosquitto broker to relay events. Same report/lookup/filter/map features
+as the other two.
+
+Open http://localhost:8083. Both `created` and `deleted` events push immediately, same as the
+MQTT client (unlike the long-poll client, which is create-only by design — see the roadmap).
+One real difference worth noting in the code: the native WebSocket API (unlike the `mqtt.js`
+library the MQTT client uses) doesn't reconnect on its own after a dropped connection —
+`client-ws/app.js`'s `connectWs()` has to do that by hand. That tradeoff (no broker to run,
+but the client owns its own reconnect logic) is the point of this client existing alongside
+the MQTT one.
+
+### Try the live sync, across all three clients
+
+Open the MQTT client (`http://localhost:8081`), the long-poll client
+(`http://localhost:8082`), and the WebSocket client (`http://localhost:8083`) side by side.
+Submit a sighting in any one — it appears in all three, via three completely different
+mechanisms. Deleting works the same way for the MQTT and WebSocket clients; the long-poll
+client won't reflect a delete until reloaded (see the roadmap). This is the whole point of
+having all three: same API, same UI, three different ways a client can find out something
+changed.
 
 ### The admin client
 
@@ -529,3 +550,9 @@ This project is being built in stages:
    same `dns` (dnsmasq) service but deliberately untested until the Pi hardware is available
    to try it against a real network interface, rather than risk conflicting with an existing
    router's DHCP server on a shared dev network.
+9. **Done**: a third public client (`client-ws/`) demonstrating a direct WebSocket connection
+   to the service (`GET /sightings/ws`) as a third live-sync mechanism alongside
+   `client-mqtt/`'s broker-mediated push and `client-long-poll/`'s pull-based polling — no
+   broker involved at all, at the cost of the client having to handle its own reconnection
+   (unlike `mqtt.js`, the native WebSocket API doesn't do that for you). Reflects both
+   creates and deletes live, same as `client-mqtt`.
