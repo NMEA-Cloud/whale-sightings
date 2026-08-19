@@ -55,14 +55,16 @@ step ca bootstrap --ca-url https://localhost:9000 --fingerprint $RootFingerprint
 Write-Host "Installing step-ca's root certificate into the trust store..."
 step certificate install "$HOME\.step\certs\root_ca.crt"
 
-# "hydra" is always included: it's the fixed Docker-network hostname login-consent uses to
-# reach Hydra's admin API (docker-compose.yml's service name for it), not a per-machine value.
-# auth.dev.booth-boat.org/api.dev.wombat-sightings.org are also always included: they're
-# Hydra's/service's fixed browser-facing identities (URLS_SELF_ISSUER, PUBLIC_API_BASE_URL -
-# see docker-compose.yml/infra/docker-compose.yml), not per-machine values either. Omitting
-# them here would silently break the OAuth2 login flow on the next cert re-issuance.
+# "hydra" and "mqtt" are always included: they're the fixed Docker-network hostnames
+# login-consent/service use to reach Hydra's admin API and the MQTT broker (docker-compose.yml's
+# service names for them), not per-machine values. auth.dev.booth-boat.org/
+# api.dev.wombat-sightings.org are also always included: they're Hydra's/service's fixed
+# browser-facing identities (URLS_SELF_ISSUER, PUBLIC_API_BASE_URL - see
+# docker-compose.yml/infra/docker-compose.yml), not per-machine values either. Omitting any of
+# these here would silently break the OAuth2 login flow or MQTT TLS on the next cert
+# re-issuance.
 $Sans = @("--san", "localhost", "--san", "127.0.0.1", "--san", "::1", "--san", "hydra", `
-    "--san", "auth.dev.booth-boat.org", "--san", "api.dev.wombat-sightings.org")
+    "--san", "mqtt", "--san", "auth.dev.booth-boat.org", "--san", "api.dev.wombat-sightings.org")
 foreach ($name in $ExtraNames) {
     $Sans += @("--san", $name)
 }

@@ -17,7 +17,11 @@ async def lifespan(app: FastAPI):
     client = Redis(host=settings.valkey_host, port=settings.valkey_port, decode_responses=True)
     app.state.store = ValkeySightingStore(client)
     app.state.mqtt_publisher = PahoMqttPublisher(
-        settings.mqtt_host, settings.mqtt_port, settings.mqtt_topic, settings.public_api_base_url
+        settings.mqtt_host,
+        settings.mqtt_port,
+        settings.mqtt_topic,
+        settings.public_api_base_url,
+        settings.mqtt_ca_bundle_path,
     )
     app.state.jwks_client = build_jwks_client(settings)
     yield

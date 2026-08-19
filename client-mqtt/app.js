@@ -3,9 +3,11 @@
 // before this file — see that file's header comment.
 
 // The service publishes here on every sighting create/delete, so any open tab can
-// live-refresh its list. Plain ws:// is fine — this client is itself served over plain
-// http, so there's no mixed-content restriction to work around.
-const MQTT_WS_URL = config.mqttWsUrl ?? "ws://localhost:9001";
+// live-refresh its list. wss:// (not ws://) since the broker requires TLS — see
+// mosquitto/mosquitto.conf. Works fine from this client even though it's itself served over
+// plain http: wss:// from an http:// page isn't blocked as mixed content (only the reverse,
+// an https:// page loading ws://, is).
+const MQTT_WS_URL = config.mqttWsUrl ?? "wss://localhost:9001";
 const MQTT_TOPIC = "whale-sightings/updates";
 
 // Live-sync: any create/delete from any open tab re-triggers this tab's normal filtered
