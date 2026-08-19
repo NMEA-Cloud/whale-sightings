@@ -3,10 +3,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.auth import require_admin
-from app.deps import get_mqtt_publisher, get_store
+from app.deps import get_mqtt_publisher, get_store, get_ws_broadcaster
 from app.main import create_app
 from app.mqtt import MqttPublisher
 from app.store.valkey_store import ValkeySightingStore
+from app.ws import WsBroadcaster
 
 
 class FakeMqttPublisher(MqttPublisher):
@@ -16,6 +17,16 @@ class FakeMqttPublisher(MqttPublisher):
         self.calls: list[tuple[str, str]] = []
 
     def publish(self, event, sighting_id: str) -> None:
+        self.calls.append((event, sighting_id))
+
+
+class FakeWsBroadcaster(WsBroadcaster):
+    """Records broadcast() calls instead of pushing to real WebSocket connections."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    def broadcast(self, event, sighting_id: str) -> None:
         self.calls.append((event, sighting_id))
 
 
@@ -35,10 +46,16 @@ def mqtt_publisher():
 
 
 @pytest.fixture
-def client(store, mqtt_publisher):
+def ws_broadcaster():
+    return FakeWsBroadcaster()
+
+
+@pytest.fixture
+def client(store, mqtt_publisher, ws_broadcaster):
     app = create_app()
     app.dependency_overrides[get_store] = lambda: store
     app.dependency_overrides[get_mqtt_publisher] = lambda: mqtt_publisher
+    app.dependency_overrides[get_ws_broadcaster] = lambda: ws_broadcaster
     # Auth is exercised on its own in test_auth.py — every other test in this suite predates
     # auth and shouldn't need a real token just to call DELETE.
     app.dependency_overrides[require_admin] = lambda: {"sub": "test-admin", "ext": {"role": "admin"}}

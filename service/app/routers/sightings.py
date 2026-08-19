@@ -3,13 +3,15 @@ import time
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, WebSocket, WebSocketDisconnect, status
 
 from app.auth import require_admin
-from app.deps import get_mqtt_publisher, get_store
+from app.config import get_settings
+from app.deps import get_mqtt_publisher, get_store, get_ws_broadcaster, get_ws_broadcaster_ws
 from app.models import SightingCreate, SightingRecord, SightingStats
 from app.mqtt import MqttPublisher
 from app.store.base import SightingStore
+from app.ws import WsBroadcaster, origin_allowed
 
 router = APIRouter()
 
@@ -41,9 +43,11 @@ def create_sighting(
     payload: SightingCreate,
     store: SightingStore = Depends(get_store),
     mqtt: MqttPublisher = Depends(get_mqtt_publisher),
+    ws: WsBroadcaster = Depends(get_ws_broadcaster),
 ) -> SightingRecord:
     record = store.create(payload)
     mqtt.publish("created", str(record.id))
+    ws.broadcast("created", str(record.id))
     return record
 
 
@@ -138,6 +142,35 @@ async def poll_sightings(
         await asyncio.sleep(min(_POLL_INTERVAL_SECONDS, remaining))
 
 
+@router.websocket("/sightings/ws")
+async def sightings_ws(
+    websocket: WebSocket,
+    ws: WsBroadcaster = Depends(get_ws_broadcaster_ws),
+) -> None:
+    """Live-sync endpoint: direct push over a plain WebSocket, no broker in between — the
+    counterpart to the MQTT-mediated push in mqtt.py and the pull-based /sightings/poll
+    above. A connected client just receives a `{"event": ..., "sighting": ...}` message
+    (see ConnectionWsBroadcaster) whenever create_sighting/delete_sighting call broadcast();
+    it never needs to send anything itself, so this only reads to detect disconnection.
+
+    Starlette doesn't apply CORSMiddleware to the WebSocket handshake — origin_allowed()
+    does the equivalent check by hand before accepting the connection.
+    """
+    settings = get_settings()
+    if not origin_allowed(websocket.headers.get("origin"), settings.cors_origin_list, settings.cors_origin_regex):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    await ws.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        ws.disconnect(websocket)
+
+
 # Declared before the "/sightings/{sighting_id}" path param route so a literal
 # "/sightings/stats" is never mistakenly captured as a sighting id.
 @router.get("/sightings/stats", response_model=SightingStats)
@@ -162,8 +195,10 @@ def delete_sighting(
     sighting_id: UUID,
     store: SightingStore = Depends(get_store),
     mqtt: MqttPublisher = Depends(get_mqtt_publisher),
+    ws: WsBroadcaster = Depends(get_ws_broadcaster),
     _claims: dict = Depends(require_admin),
 ) -> None:
     if not store.delete(sighting_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sighting not found")
     mqtt.publish("deleted", str(sighting_id))
+    ws.broadcast("deleted", str(sighting_id))

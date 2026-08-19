@@ -43,7 +43,7 @@ services:
       VALKEY_PORT: 6379
       MQTT_HOST: mqtt
       MQTT_PORT: 8883
-      CORS_ORIGINS: http://localhost:8080,http://localhost:8081,http://localhost:8082
+      CORS_ORIGINS: http://localhost:8080,http://localhost:8081,http://localhost:8082,http://localhost:8083
       PUBLIC_API_BASE_URL: https://api.dev.wombat-sightings.org:8000
       # The only setting that changes if the OAuth2 authorization server (hydra) relocates
       # to a different LAN machine — see hydra/hydra.yml's URLS_SELF_ISSUER comment. Must
@@ -106,6 +106,16 @@ services:
       - "8082:8082"
     environment:
       API_BASE: https://localhost:8000
+
+  client-ws:
+    build:
+      context: .
+      dockerfile: client-ws/Dockerfile
+    ports:
+      - "8083:8083"
+    environment:
+      API_BASE: https://localhost:8000
+      WS_URL: wss://localhost:8000/sightings/ws
 
 networks:
   whale-sightings-net:

@@ -9,6 +9,7 @@ from app.config import get_settings
 from app.mqtt import PahoMqttPublisher
 from app.routers import health, sightings, well_known
 from app.store.valkey_store import ValkeySightingStore
+from app.ws import ConnectionWsBroadcaster
 
 
 @asynccontextmanager
@@ -23,6 +24,7 @@ async def lifespan(app: FastAPI):
         settings.public_api_base_url,
         settings.mqtt_ca_bundle_path,
     )
+    app.state.ws_broadcaster = ConnectionWsBroadcaster(settings.public_api_base_url)
     app.state.jwks_client = build_jwks_client(settings)
     yield
     client.close()
