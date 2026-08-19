@@ -29,7 +29,7 @@ the service is intended to eventually deploy to AWS.
 | Port | Service | Host | Project | Notes |
 |---|---|---|---|---|
 | 6379 | `valkey` | localhost | app | Redis protocol |
-| 1883 | `mqtt` | localhost | app | MQTT |
+| 8883 | `mqtt` | localhost | app | MQTT, TLS required (`mqtts`) |
 | 9001 | `mqtt` | localhost | app | MQTT over WebSockets |
 | 8000 | `service` | api.dev.wombat-sightings.org | app | HTTPS (FastAPI) — also reachable at localhost:8000 |
 | 8080 | `client-admin` | localhost | app | HTTP |
@@ -214,9 +214,11 @@ docker compose up --build
 - Service: https://localhost:8000
 - Health check: `curl https://localhost:8000/health`
 - Valkey is exposed on `localhost:6379` for debugging with `valkey-cli`.
-- The MQTT broker (Mosquitto) is exposed on `localhost:1883` (plain MQTT, e.g. for
-  `mosquitto_sub`) and `localhost:9001` (MQTT-over-WebSockets, what the browser client
-  uses) — see "Running the MQTT client" below.
+- The MQTT broker (Mosquitto) requires TLS on both `localhost:8883` (native MQTT protocol,
+  `mqtts` — e.g. `mosquitto_sub -p 8883 --cafile certs/rootCA.pem ...`; 8883 is the
+  IANA-standard TLS port, what most MQTT client tools default to) and `localhost:9001`
+  (MQTT-over-WebSockets, `wss://`, what the browser client uses) — see "The MQTT client"
+  below.
 
 ### Example requests
 
@@ -340,7 +342,7 @@ re-fits itself to whatever sightings are currently loaded whenever the list chan
 
 The list, count, and map also live-refresh automatically: the service publishes to the
 Mosquitto broker whenever any client creates or deletes a sighting, and every open
-client subscribes over MQTT-over-WebSockets (`ws://localhost:9001`) and re-runs its
+client subscribes over MQTT-over-WebSockets (`wss://localhost:9001`) and re-runs its
 current filtered query on each notification. The manual Refresh button still works too.
 
 ### Try the live sync

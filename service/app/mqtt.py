@@ -18,12 +18,16 @@ class MqttPublisher(ABC):
 
 
 class PahoMqttPublisher(MqttPublisher):
-    def __init__(self, host: str, port: int, topic: str, base_url: str) -> None:
+    def __init__(
+        self, host: str, port: int, topic: str, base_url: str, ca_bundle_path: str | None = None
+    ) -> None:
         self._topic = topic
         self._base_url = base_url.rstrip("/")
         self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         self._client.on_connect = self._on_connect
         self._client.on_disconnect = self._on_disconnect
+        if ca_bundle_path:
+            self._client.tls_set(ca_certs=ca_bundle_path)
         # A local/docker-network broker accepts connections in milliseconds; capping
         # this well below the 5s default keeps close() fast if the broker is
         # unreachable (e.g. under pytest), since loop_stop() has to wait out any

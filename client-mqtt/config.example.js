@@ -3,5 +3,5 @@
 // machine. If config.js doesn't exist, app.js falls back to the localhost defaults below.
 window.WHALE_SIGHTINGS_CONFIG = {
   apiBase: "https://localhost:8000",
-  mqttWsUrl: "ws://localhost:9001",
+  mqttWsUrl: "wss://localhost:9001",
 };

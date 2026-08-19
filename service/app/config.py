@@ -7,8 +7,12 @@ class Settings(BaseSettings):
     valkey_host: str = "localhost"
     valkey_port: int = 6379
     mqtt_host: str = "localhost"
-    mqtt_port: int = 1883
+    mqtt_port: int = 8883
     mqtt_topic: str = "whale-sightings/updates"
+    # Trusted for the TLS connection to the broker. Unset (the default) means plain,
+    # unencrypted MQTT — used by tests and any non-Docker run against a broker without TLS
+    # configured. docker-compose.yml sets this, since the broker there requires TLS.
+    mqtt_ca_bundle_path: str | None = None
     cors_origins: str = "http://localhost:8080"
     # Optional: matched against the Origin header in addition to cors_origins, for allowing
     # a whole range of hosts (e.g. a LAN subnet) without enumerating each one, e.g.
