@@ -277,10 +277,13 @@ List sightings within a radius (nautical miles) of a point — `lat`, `lon`, and
 curl "https://localhost:8000/sightings?lat=47.726&lon=-122.645&radius_nm=10"
 ```
 
-Long-poll for new sightings — holds the connection open until there's a sighting newer
-than `since`, or `timeout_seconds` elapses. `lat`/`lon`/`radius_nm` compose with it the
-same way they do with `GET /sightings`. Returns `200` with the match(es) or `204` (empty)
-on timeout — used by `client-long-poll/` instead of MQTT:
+Long-poll for created or deleted sightings — holds the connection open until there's a
+sighting created, or a sighting deleted, after `since`, or `timeout_seconds` elapses.
+`lat`/`lon`/`radius_nm` compose with it the same way they do with `GET /sightings` (only
+narrowing `created` — a deleted record's location is no longer known, so `deleted` is
+reported unfiltered). Returns `200` with `{"created": [...], "deleted": [...]}` (tombstones
+only — `id`/`deleted_at`, no sighting data) or `204` (empty) on timeout — used by
+`client-long-poll/` instead of MQTT:
 
 ```bash
 curl "https://localhost:8000/sightings/poll?since=2026-01-01T00:00:00Z&timeout_seconds=5"
@@ -377,7 +380,7 @@ which depends on the Mosquitto broker to relay events. Same report/lookup/filter
 as the other two.
 
 Open http://localhost:8083. Both `created` and `deleted` events push immediately, same as the
-MQTT client (unlike the long-poll client, which is create-only by design — see the roadmap).
+MQTT client and, since `GET /sightings/poll` now reports both, the long-poll client too.
 One real difference worth noting in the code: the native WebSocket API (unlike the `mqtt.js`
 library the MQTT client uses) doesn't reconnect on its own after a dropped connection —
 `client-ws/app.js`'s `connectWs()` has to do that by hand. That tradeoff (no broker to run,
@@ -540,10 +543,10 @@ This project is being built in stages:
    (`GET /sightings/poll`) as an alternative to `client-mqtt/`'s push-based live sync —
    same API, same UI, two different mechanisms for a client to learn something changed.
    MQTT topic segmentation (so a client can subscribe to only what it cares about) is a
-   related, still-open follow-up. `/sightings/poll` only reports newly *created* sightings
-   (deliberately — see its docstring), so unlike `client-mqtt`, `client-long-poll` doesn't
-   reflect deletions live; extending it to also surface deletions is a deliberately-deferred
-   follow-up, not a bug.
+   related, still-open follow-up. **Done**: `/sightings/poll` reports both newly *created*
+   sightings and tombstones for newly *deleted* ones (a `PollResult` with `created`/`deleted`
+   lists — see its docstring), so `client-long-poll` now reflects deletions live too, the
+   same as `client-mqtt`/`client-ws`.
 8. **In progress**: moving the infra project (`infra/docker-compose.yml` — Hydra, step-ca,
    `dns`) onto a Raspberry Pi acting as the router for an ad hoc trade-show LAN. TLS
    (step-ca, **done**) and DNS (**done**) are usable in dev today; DHCP is planned for the

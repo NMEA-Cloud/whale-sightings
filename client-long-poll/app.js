@@ -48,18 +48,25 @@ async function pollLoop() {
         throw new Error(`Poll failed (${response.status})`);
       }
 
-      const matched = await response.json();
+      const result = await response.json();
       const cursorBefore = sinceCursor;
-      for (const record of matched) {
+      for (const record of result.created) {
         if (record.created_at > sinceCursor) {
           sinceCursor = record.created_at;
         }
       }
+      for (const deletion of result.deleted) {
+        if (deletion.deleted_at > sinceCursor) {
+          sinceCursor = deletion.deleted_at;
+        }
+      }
 
-      // Mirrors the MQTT client's on("message") handler: don't render `matched` directly
-      // (it's only the delta, not the full current filtered view) — treat it as a
-      // "something changed" signal and re-run the normal filtered load, same as every
-      // other refresh trigger.
+      // Mirrors the MQTT client's on("message") handler: don't render result.created/
+      // result.deleted directly (they're only the delta, not the full current filtered
+      // view, and a deletion carries no record data to render anyway) — treat a non-empty
+      // result as a "something changed" signal and re-run the normal filtered load, same
+      // as every other refresh trigger. That reload naturally drops deleted sightings,
+      // since they're already gone from the store by the time GET /sightings answers.
       await loadSightings().catch((error) => setListStatus(error.message, true));
 
       // Defensive: a 200 response should always carry a newer created_at than what we

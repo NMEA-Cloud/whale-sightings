@@ -178,6 +178,42 @@ def test_delete_returns_false_for_unknown_id(store):
     assert store.delete(uuid.uuid4()) is False
 
 
+def test_delete_records_tombstone(store, fake_redis_client):
+    record = store.create(make_payload())
+
+    store.delete(record.id)
+
+    assert fake_redis_client.zscore("sightings:by_deleted_at", str(record.id)) is not None
+
+
+def test_delete_of_unknown_id_leaves_no_tombstone(store):
+    unknown_id = uuid.uuid4()
+
+    store.delete(unknown_id)
+
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=1)
+    assert store.list_deleted_since(cutoff) == []
+
+
+def test_list_deleted_since_excludes_deletions_before_cutoff(store):
+    record = store.create(make_payload())
+    store.delete(record.id)
+
+    cutoff = datetime.now(timezone.utc) + timedelta(seconds=1)
+
+    assert store.list_deleted_since(cutoff) == []
+
+
+def test_list_deleted_since_includes_deletion_at_cutoff(store):
+    record = store.create(make_payload())
+    store.delete(record.id)
+    [deletion] = store.list_deleted_since(datetime.now(timezone.utc) - timedelta(seconds=1))
+
+    at_cutoff = store.list_deleted_since(deletion.deleted_at)
+
+    assert [d.id for d in at_cutoff] == [record.id]
+
+
 def test_list_within_radius_excludes_far_away_records(store):
     # ~0.01 degrees of longitude at this latitude is roughly 0.4nm away.
     nearby_record = store.create(make_payload(lon=-122.655, lat=47.726))
