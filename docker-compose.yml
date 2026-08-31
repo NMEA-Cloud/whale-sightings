@@ -30,7 +30,7 @@ services:
       - ./certs:/certs:ro
     healthcheck:
       test: ["CMD", "mosquitto_sub", "-h", "localhost", "-p", "8883", "--cafile", "/certs/rootCA.pem", "-t", "$$SYS/#", "-C", "1", "-W", "3"]
-      interval: 2s
+      interval: 10s
       timeout: 5s
       retries: 15
 
