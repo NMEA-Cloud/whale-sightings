@@ -90,6 +90,20 @@ function initMap() {
   });
 }
 
+// One consistent visual language across all three map clients, for every marker
+// (including existing local ones) — not just a special treatment for new sources.
+const SOURCE_COLORS = { local: "#2563eb", peer: "#d97706", whale_alert: "#0d9488" };
+
+function sourceMarkerIcon(sourceType) {
+  const color = SOURCE_COLORS[sourceType] ?? SOURCE_COLORS.local;
+  return L.divIcon({
+    className: "",
+    html: `<span style="display:block;width:14px;height:14px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 0 2px rgba(0,0,0,0.6);"></span>`,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+  });
+}
+
 function updateMapMarkers(records) {
   markersLayer.clearLayers();
 
@@ -99,13 +113,15 @@ function updateMapMarkers(records) {
     const [lon, lat] = sighting.location.geometry.coordinates;
     points.push([lat, lon]);
 
+    const sourceType = record.source?.type ?? "local";
     const when = new Date(sighting.location.geometry.properties.datetime).toLocaleString();
     const name = sighting.name ? ` (${escapeHtml(sighting.name)})` : "";
-    L.marker([lat, lon])
+    L.marker([lat, lon], { icon: sourceMarkerIcon(sourceType) })
       .bindPopup(
         `<strong>${escapeHtml(sighting.species)}</strong>${name}<br>` +
         `${escapeHtml(sighting.status)} — ${when}<br>` +
-        `${escapeHtml(sighting.comments ?? "")}`
+        `${escapeHtml(sighting.comments ?? "")}<br>` +
+        `Source: ${escapeHtml(sourceType)}`
       )
       .addTo(markersLayer);
   }

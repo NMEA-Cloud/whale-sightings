@@ -11,7 +11,7 @@ from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
 
-Event = Literal["created", "deleted"]
+Event = Literal["created", "updated", "deleted"]
 
 
 class WsBroadcaster(ABC):

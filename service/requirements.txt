@@ -5,3 +5,4 @@ redis==5.2.1
 paho-mqtt==2.1.0
 python-dotenv==1.0.1
 PyJWT[crypto]==2.10.1
+httpx==0.28.1

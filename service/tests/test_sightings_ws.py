@@ -2,7 +2,7 @@ import pytest
 from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
 
-from app.auth import require_admin
+from app.auth import require_admin, require_admin_or_ingest
 from app.deps import get_mqtt_publisher, get_store
 from app.main import create_app
 from tests.test_sightings_api import sample_payload_dict
@@ -18,6 +18,7 @@ def client(store, mqtt_publisher):
     app.dependency_overrides[get_store] = lambda: store
     app.dependency_overrides[get_mqtt_publisher] = lambda: mqtt_publisher
     app.dependency_overrides[require_admin] = lambda: {"sub": "test-admin", "ext": {"role": "admin"}}
+    app.dependency_overrides[require_admin_or_ingest] = lambda: {"sub": "test-admin", "ext": {"role": "admin"}}
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

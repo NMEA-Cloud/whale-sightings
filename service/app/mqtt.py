@@ -9,7 +9,7 @@ import paho.mqtt.client as mqtt
 
 logger = logging.getLogger(__name__)
 
-Event = Literal["created", "deleted"]
+Event = Literal["created", "updated", "deleted"]
 
 
 class MqttPublisher(ABC):

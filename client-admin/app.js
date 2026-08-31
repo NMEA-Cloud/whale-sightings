@@ -16,6 +16,9 @@ let accessToken = null;
 const statCount = document.getElementById("stat-count");
 const statOldest = document.getElementById("stat-oldest");
 const statNewest = document.getElementById("stat-newest");
+const statSourceLocal = document.getElementById("stat-source-local");
+const statSourcePeer = document.getElementById("stat-source-peer");
+const statSourceWhaleAlert = document.getElementById("stat-source-whale-alert");
 const statsStatus = document.getElementById("stats-status");
 const refreshStatsButton = document.getElementById("refresh-stats-button");
 const scenarioButtonsContainer = document.getElementById("scenario-buttons");
@@ -47,6 +50,9 @@ async function refreshStats() {
   statCount.textContent = stats.count;
   statOldest.textContent = formatSightingSummary(stats.oldest);
   statNewest.textContent = formatSightingSummary(stats.newest);
+  statSourceLocal.textContent = stats.by_source?.local ?? 0;
+  statSourcePeer.textContent = stats.by_source?.peer ?? 0;
+  statSourceWhaleAlert.textContent = stats.by_source?.whale_alert ?? 0;
 }
 
 function isoOffset(hoursAgo) {
@@ -219,7 +225,19 @@ async function clearAllSightings() {
   }
   const sightings = await listResponse.json();
 
+  let deletedCount = 0;
+  let skippedCount = 0;
+
   for (const record of sightings) {
+    // Whale Alert is the single source of truth for its own data — only the ingest
+    // connector (acting on Whale Alert's own moderation status) may delete these, never an
+    // admin. Skipped up front rather than attempted-then-403'd, so one Whale Alert record
+    // doesn't abort the rest of this loop (see delete_sighting in routers/sightings.py).
+    if (record.source?.type === "whale_alert") {
+      skippedCount++;
+      continue;
+    }
+
     const deleteResponse = await fetch(`${API_BASE}/sightings/${record.id}`, {
       method: "DELETE",
       headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
@@ -240,9 +258,11 @@ async function clearAllSightings() {
     if (!deleteResponse.ok) {
       throw new Error(`Failed to delete sighting ${record.id} (${deleteResponse.status})`);
     }
+    deletedCount++;
   }
 
-  setStatus(clearStatus, `Deleted ${sightings.length} sighting(s).`, false);
+  const skippedNote = skippedCount > 0 ? ` Left ${skippedCount} Whale Alert-sourced sighting(s) alone.` : "";
+  setStatus(clearStatus, `Deleted ${deletedCount} sighting(s).${skippedNote}`, false);
   await refreshStats();
 }
 
