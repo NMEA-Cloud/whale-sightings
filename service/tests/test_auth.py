@@ -380,3 +380,21 @@ def test_ingest_delete_on_whale_alert_record_returns_204(auth_client):
     )
 
     assert response.status_code == 204
+
+
+def test_admin_delete_on_whale_alert_record_returns_403(auth_client):
+    # Whale Alert is the single source of truth for its own data — only the ingest
+    # connector (acting on Whale Alert's own moderation status) may remove these, never a
+    # human admin, since an admin-initiated delete would just get silently resurrected by
+    # the connector's next poll cycle anyway.
+    payload = sample_payload_dict()
+    payload["source_upstream_id"] = "116308"
+    created = auth_client.post(
+        "/sightings", json=payload, headers={"Authorization": f"Bearer {_make_ingest_token()}"}
+    ).json()
+
+    response = auth_client.delete(
+        f"/sightings/{created['id']}", headers={"Authorization": f"Bearer {_make_token()}"}
+    )
+
+    assert response.status_code == 403

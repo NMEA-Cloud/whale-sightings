@@ -275,15 +275,28 @@ def delete_sighting(
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sighting not found")
 
-    # An ingest-scoped caller may only delete records it itself owns — a compromised or
-    # buggy ingest credential can't touch local or peer sightings. Checked directly against
-    # the token's own scopes (not "which dependency succeeded" — require_admin_or_ingest
-    # tries require_admin first) so this restriction applies to any token carrying the
-    # ingest scope, even one that also happens to carry admin role.
-    if "sightings:ingest" in token_scopes(claims) and record.source.type != SightingSourceType.WHALE_ALERT:
+    # Each source's owner is the only one who may delete its own records — checked directly
+    # against the token's own scopes (not "which dependency succeeded" — require_admin_or_
+    # ingest tries require_admin first), so this applies to any token carrying the ingest
+    # scope, even one that also happens to carry admin role.
+    #  - An ingest-scoped caller may only delete records it itself owns — a compromised or
+    #    buggy ingest credential can't touch local or peer sightings.
+    #  - Conversely, a human admin may not delete Whale Alert-sourced records — Whale Alert
+    #    is the single source of truth for its own data; this service only relays it, and
+    #    an admin-initiated delete would just get silently resurrected by the connector's
+    #    next poll cycle anyway (it has no way to distinguish "deleted here" from "not yet
+    #    ingested"), so refusing it up front is more honest than a delete that doesn't stick.
+    is_ingest = "sightings:ingest" in token_scopes(claims)
+    is_whale_alert = record.source.type == SightingSourceType.WHALE_ALERT
+    if is_ingest and not is_whale_alert:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Ingest credentials may only delete Whale Alert-sourced sightings",
+        )
+    if is_whale_alert and not is_ingest:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Whale Alert-sourced sightings can only be deleted by the ingest connector",
         )
 
     store.delete(sighting_id)

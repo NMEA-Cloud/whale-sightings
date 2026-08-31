@@ -225,7 +225,19 @@ async function clearAllSightings() {
   }
   const sightings = await listResponse.json();
 
+  let deletedCount = 0;
+  let skippedCount = 0;
+
   for (const record of sightings) {
+    // Whale Alert is the single source of truth for its own data — only the ingest
+    // connector (acting on Whale Alert's own moderation status) may delete these, never an
+    // admin. Skipped up front rather than attempted-then-403'd, so one Whale Alert record
+    // doesn't abort the rest of this loop (see delete_sighting in routers/sightings.py).
+    if (record.source?.type === "whale_alert") {
+      skippedCount++;
+      continue;
+    }
+
     const deleteResponse = await fetch(`${API_BASE}/sightings/${record.id}`, {
       method: "DELETE",
       headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
@@ -246,9 +258,11 @@ async function clearAllSightings() {
     if (!deleteResponse.ok) {
       throw new Error(`Failed to delete sighting ${record.id} (${deleteResponse.status})`);
     }
+    deletedCount++;
   }
 
-  setStatus(clearStatus, `Deleted ${sightings.length} sighting(s).`, false);
+  const skippedNote = skippedCount > 0 ? ` Left ${skippedCount} Whale Alert-sourced sighting(s) alone.` : "";
+  setStatus(clearStatus, `Deleted ${deletedCount} sighting(s).${skippedNote}`, false);
   await refreshStats();
 }
 
