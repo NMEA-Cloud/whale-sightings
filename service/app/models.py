@@ -101,3 +101,21 @@ class SightingStats(BaseModel):
     count: int
     oldest: SightingRecord | None
     newest: SightingRecord | None
+
+
+class SightingDeletion(BaseModel):
+    """A tombstone: just enough to let a long-poll client know a sighting is gone and
+    advance its cursor past the deletion, without needing the deleted record's own data."""
+
+    id: UUID
+    deleted_at: datetime
+
+
+class PollResult(BaseModel):
+    """GET /sightings/poll's response body: the created and deleted sightings since the
+    poll's `since` cursor. A client advances its cursor past the latest created_at/
+    deleted_at seen in either list, then treats a non-empty response as a "something
+    changed" signal to re-run its normal filtered load — see client-long-poll/app.js."""
+
+    created: list[SightingRecord] = []
+    deleted: list[SightingDeletion] = []

@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 
 from redis import Redis
 
-from app.models import SightingCreate, SightingRecord, SightingStats
+from app.models import SightingCreate, SightingDeletion, SightingRecord, SightingStats
 from app.store.base import SightingStore
 
 logger = logging.getLogger(__name__)
@@ -13,6 +13,10 @@ SIGHTING_KEY_PREFIX = "sighting:"
 BY_TIME_KEY = "sightings:by_time"
 BY_CREATED_KEY = "sightings:by_created_at"
 GEO_KEY = "sightings:geo"
+# Tombstones, kept indefinitely (mirrors BY_CREATED_KEY never being trimmed either) — a
+# permanent record that a given id was deleted, since the sighting itself no longer exists
+# to answer that question. See list_deleted_since().
+BY_DELETED_KEY = "sightings:by_deleted_at"
 NM_TO_KM = 1.852  # international nautical mile
 
 
@@ -99,13 +103,27 @@ class ValkeySightingStore(SightingStore):
 
     def delete(self, sighting_id: UUID) -> bool:
         record_id = str(sighting_id)
+        # Checked up front (not just inferred from the pipeline's delete count below) so a
+        # DELETE on an id that never existed doesn't leave a phantom tombstone behind for
+        # list_deleted_since() to report.
+        if not self._client.exists(f"{SIGHTING_KEY_PREFIX}{record_id}"):
+            return False
 
+        deleted_at = datetime.now(timezone.utc)
         pipe = self._client.pipeline(transaction=True)
         pipe.delete(f"{SIGHTING_KEY_PREFIX}{record_id}")
         pipe.zrem(BY_TIME_KEY, record_id)
         pipe.zrem(BY_CREATED_KEY, record_id)
         # GEOADD stores members in a sorted set under the hood, so ZREM removes them too.
         pipe.zrem(GEO_KEY, record_id)
-        deleted_count, _, _, _ = pipe.execute()
+        pipe.zadd(BY_DELETED_KEY, {record_id: deleted_at.timestamp()})
+        deleted_count, _, _, _, _ = pipe.execute()
 
         return bool(deleted_count)
+
+    def list_deleted_since(self, cutoff: datetime) -> list[SightingDeletion]:
+        entries = self._client.zrevrangebyscore(BY_DELETED_KEY, "+inf", cutoff.timestamp(), withscores=True)
+        return [
+            SightingDeletion(id=UUID(record_id), deleted_at=datetime.fromtimestamp(score, tz=timezone.utc))
+            for record_id, score in entries
+        ]

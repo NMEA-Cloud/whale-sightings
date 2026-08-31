@@ -15,7 +15,8 @@ def test_poll_returns_immediately_on_existing_match(client):
     )
 
     assert response.status_code == 200
-    assert [r["id"] for r in response.json()] == [body["id"]]
+    assert [r["id"] for r in response.json()["created"]] == [body["id"]]
+    assert response.json()["deleted"] == []
 
     client.delete(f"/sightings/{body['id']}")
 
@@ -40,7 +41,7 @@ def test_poll_matches_backdated_sighting_by_creation_time_not_reported_datetime(
     response = client.get("/sightings/poll", params={"since": since, "timeout_seconds": 5})
 
     assert response.status_code == 200
-    assert [r["id"] for r in response.json()] == [body["id"]]
+    assert [r["id"] for r in response.json()["created"]] == [body["id"]]
 
     client.delete(f"/sightings/{body['id']}")
 
@@ -78,7 +79,7 @@ def test_poll_combines_radius_filter(client):
     )
 
     assert response.status_code == 200
-    assert [r["id"] for r in response.json()] == [nearby_id]
+    assert [r["id"] for r in response.json()["created"]] == [nearby_id]
 
     client.delete(f"/sightings/{nearby_id}")
     client.delete(f"/sightings/{far_id}")
@@ -107,3 +108,43 @@ def test_poll_cursor_is_exclusive_not_inclusive(client):
     assert response.status_code == 204
 
     client.delete(f"/sightings/{body['id']}")
+
+
+def test_poll_matches_deletion_since_cutoff(client):
+    body = client.post("/sightings", json=sample_payload_dict()).json()
+    since = body["created_at"]
+
+    client.delete(f"/sightings/{body['id']}")
+
+    response = client.get("/sightings/poll", params={"since": since, "timeout_seconds": 5})
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["created"] == []
+    assert [d["id"] for d in result["deleted"]] == [body["id"]]
+
+
+def test_poll_deletion_cursor_is_exclusive_not_inclusive(client):
+    body = client.post("/sightings", json=sample_payload_dict()).json()
+    client.delete(f"/sightings/{body['id']}")
+
+    since = client.get(
+        "/sightings/poll", params={"since": body["created_at"], "timeout_seconds": 5}
+    ).json()["deleted"][0]["deleted_at"]
+
+    # Re-polling with since set to the exact deleted_at just matched should NOT re-match
+    # it — list_deleted_since() is inclusive (>=), but the poll endpoint post-filters
+    # strictly (>) so an advancing client cursor doesn't loop on the same tombstone.
+    response = client.get("/sightings/poll", params={"since": since, "timeout_seconds": 1})
+
+    assert response.status_code == 204
+
+
+def test_poll_deleting_nonexistent_sighting_leaves_no_tombstone(client):
+    since = _one_hour_ago_iso()
+
+    client.delete("/sightings/00000000-0000-0000-0000-000000000000")
+
+    response = client.get("/sightings/poll", params={"since": since, "timeout_seconds": 1})
+
+    assert response.status_code == 204

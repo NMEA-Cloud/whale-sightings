@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from uuid import UUID
 
-from app.models import SightingCreate, SightingRecord, SightingStats
+from app.models import SightingCreate, SightingDeletion, SightingRecord, SightingStats
 
 
 class SightingStore(ABC):
@@ -30,6 +30,12 @@ class SightingStore(ABC):
     @abstractmethod
     def list_within_radius(self, lon: float, lat: float, radius_nm: float) -> list[SightingRecord]:
         """Return sightings within radius_nm nautical miles of (lon, lat), newest first."""
+
+    @abstractmethod
+    def list_deleted_since(self, cutoff: datetime) -> list[SightingDeletion]:
+        """Return tombstones for sightings deleted at or after cutoff, newest first. The
+        deleted record's own data isn't available (it's gone) — just enough (id,
+        deleted_at) for a poller to notice and advance its cursor."""
 
     @abstractmethod
     def get(self, sighting_id: UUID) -> SightingRecord | None:

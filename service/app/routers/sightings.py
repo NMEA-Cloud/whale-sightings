@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, WebSocke
 from app.auth import require_admin
 from app.config import get_settings
 from app.deps import get_mqtt_publisher, get_store, get_ws_broadcaster, get_ws_broadcaster_ws
-from app.models import SightingCreate, SightingRecord, SightingStats
+from app.models import PollResult, SightingCreate, SightingRecord, SightingStats
 from app.mqtt import MqttPublisher
 from app.store.base import SightingStore
 from app.ws import WsBroadcaster, origin_allowed
@@ -82,9 +82,9 @@ def list_sightings(
 # Declared before the "/sightings/{sighting_id}" path param route (same reasoning as
 # "/sightings/stats" below) so these literal paths are never mistakenly parsed as a
 # sighting id.
-@router.get("/sightings/poll", response_model=list[SightingRecord])
+@router.get("/sightings/poll", response_model=PollResult)
 async def poll_sightings(
-    since: datetime = Query(..., description="Only return sightings created strictly after this instant"),
+    since: datetime = Query(..., description="Only return sightings created/deleted strictly after this instant"),
     lat: float | None = Query(default=None, ge=-90, le=90, description="Latitude of the search center"),
     lon: float | None = Query(default=None, ge=-180, le=180, description="Longitude of the search center"),
     radius_nm: float | None = Query(default=None, gt=0, description="Search radius in nautical miles"),
@@ -92,12 +92,13 @@ async def poll_sightings(
         default=25.0, gt=0, le=55, description="Max seconds to hold the request open waiting for a match"
     ),
     store: SightingStore = Depends(get_store),
-) -> list[SightingRecord] | Response:
+) -> PollResult | Response:
     """Long-poll endpoint: holds the connection open, re-checking the store every
-    _POLL_INTERVAL_SECONDS, until there's a sighting *created* after `since` (200, with the
-    match(es)) or timeout_seconds elapses (204, empty). The client is expected to advance
-    `since` to the newest match's created_at and immediately re-request on either outcome —
-    that repeated-request loop from the client is what makes this "long polling".
+    _POLL_INTERVAL_SECONDS, until there's a sighting *created or deleted* after `since`
+    (200, with a PollResult naming the match(es)) or timeout_seconds elapses (204, empty).
+    The client is expected to advance `since` past the newest created_at/deleted_at seen and
+    immediately re-request on either outcome — that repeated-request loop from the client is
+    what makes this "long polling".
 
     Filters on created_at (server-assigned, see models.py), not the sighting's own reported
     datetime — those are different questions. A sighting reported as "spotted 20 minutes
@@ -106,6 +107,15 @@ async def poll_sightings(
     (its own datetime being in the past would make it look like it isn't "new"). since_hours
     on GET /sightings above answers the other, legitimately different question — "what did
     people see recently" — which does mean the sighting's own datetime.
+
+    `deleted` carries only tombstones (id + deleted_at, see SightingDeletion) — the deleted
+    record's own data is gone, so there's nothing else to report. A location filter only
+    narrows `created` (list_within_radius has real coordinates to check); `deleted` is
+    reported unfiltered in that case since a removed record's location is no longer known.
+    That can trigger a client's refetch for a deletion outside its filtered view, which is
+    harmless — the client only ever treats this response as a "something changed" signal
+    and reloads its own filtered view (see client-long-poll/app.js), never renders `deleted`
+    directly.
 
     Deliberately independent of the MQTT publish path (see mqtt.py) — this re-checks the
     store directly rather than subscribing to the same events service publishes, so it's a
@@ -129,12 +139,13 @@ async def poll_sightings(
         else:
             records = store.list_created_since(since)
 
-        # list_created_since()/list_within_radius() are inclusive (>=); filter strictly
-        # here so a client that advances its cursor to a matched record's exact created_at
-        # doesn't keep re-matching that same record forever.
-        matched = [r for r in records if r.created_at > since]
-        if matched:
-            return matched
+        # list_created_since()/list_within_radius()/list_deleted_since() are inclusive
+        # (>=); filter strictly here so a client that advances its cursor to a matched
+        # entry's exact created_at/deleted_at doesn't keep re-matching it forever.
+        matched_created = [r for r in records if r.created_at > since]
+        matched_deleted = [d for d in store.list_deleted_since(since) if d.deleted_at > since]
+        if matched_created or matched_deleted:
+            return PollResult(created=matched_created, deleted=matched_deleted)
 
         remaining = deadline - time.monotonic()
         if remaining <= 0:
