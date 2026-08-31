@@ -15,7 +15,11 @@ if ! command -v tmux >/dev/null 2>&1 || ! tmux has-session -t "$SESSION" 2>/dev/
 fi
 
 echo "Stopping docker compose (app and infra projects)..."
-docker compose down || true
+# --profile '*' matters here: a plain `docker compose down` only tears down services with no
+# profile (or profiles matching COMPOSE_PROFILES) — a dev-up.sh run started with
+# --with-whale-alert (or whale-alert-mock brought up separately) leaves those containers
+# running otherwise, orphaned from this teardown and from the tmux session it just killed.
+docker compose --profile '*' down || true
 docker compose -f infra/docker-compose.yml down || true
 
 echo "Deactivating venv in the shell window..."

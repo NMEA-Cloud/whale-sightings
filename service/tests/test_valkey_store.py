@@ -6,9 +6,13 @@ from app.models import (
     GeoJSONPointProperties,
     Location,
     Observer,
+    ModerationStatus,
     SightingCreate,
     SightingData,
     SightingMethod,
+    SightingRecord,
+    SightingSource,
+    SightingSourceType,
     SightingStatus,
 )
 
@@ -237,3 +241,92 @@ def test_list_within_radius_newest_first(store):
     records = store.list_within_radius(lon=-122.645, lat=47.726, radius_nm=10)
 
     assert [r.id for r in records] == [newer.id, older.id]
+
+
+def test_create_defaults_to_local_source(store):
+    record = store.create(make_payload())
+
+    assert record.source.type == SightingSourceType.LOCAL
+
+
+def test_create_tags_given_source(store):
+    source = SightingSource(type=SightingSourceType.WHALE_ALERT, upstream_id="116308")
+
+    record = store.create(make_payload(), source=source)
+
+    assert record.source == source
+
+
+def test_update_reindexes_record(store):
+    record = store.create(make_payload())
+    moderated = record.model_copy(update={"moderation_status": ModerationStatus.CONFIRMED})
+
+    updated = store.update(moderated)
+
+    assert updated.moderation_status == ModerationStatus.CONFIRMED
+    assert store.get(record.id).moderation_status == ModerationStatus.CONFIRMED
+
+
+def test_update_returns_none_for_unknown_id(store):
+    payload = make_payload()
+    unsaved_record = SightingRecord(
+        id=uuid.uuid4(),
+        created_at=datetime.now(timezone.utc),
+        sighting=payload.sighting,
+        observer=payload.observer,
+    )
+
+    assert store.update(unsaved_record) is None
+
+
+def test_update_does_not_change_source_counts(store):
+    record = store.create(make_payload())
+
+    store.update(record.model_copy(update={"moderation_status": ModerationStatus.CONFIRMED}))
+
+    assert store.stats().by_source[SightingSourceType.LOCAL] == 1
+
+
+def test_get_by_source_found(store):
+    source = SightingSource(type=SightingSourceType.WHALE_ALERT, upstream_id="116308")
+    record = store.create(make_payload(), source=source)
+
+    found = store.get_by_source(SightingSourceType.WHALE_ALERT, "116308")
+
+    assert found.id == record.id
+
+
+def test_get_by_source_not_found(store):
+    assert store.get_by_source(SightingSourceType.WHALE_ALERT, "does-not-exist") is None
+
+
+def test_create_increments_source_type_count(store):
+    store.create(make_payload())
+    store.create(make_payload(), source=SightingSource(type=SightingSourceType.WHALE_ALERT, upstream_id="1"))
+    store.create(make_payload(), source=SightingSource(type=SightingSourceType.WHALE_ALERT, upstream_id="2"))
+
+    by_source = store.stats().by_source
+
+    assert by_source[SightingSourceType.LOCAL] == 1
+    assert by_source[SightingSourceType.WHALE_ALERT] == 2
+    assert by_source[SightingSourceType.PEER] == 0
+
+
+def test_delete_decrements_source_type_count(store):
+    record = store.create(
+        make_payload(), source=SightingSource(type=SightingSourceType.WHALE_ALERT, upstream_id="1")
+    )
+
+    store.delete(record.id)
+
+    assert store.stats().by_source[SightingSourceType.WHALE_ALERT] == 0
+
+
+def test_delete_removes_source_lookup(store):
+    record = store.create(
+        make_payload(), source=SightingSource(type=SightingSourceType.WHALE_ALERT, upstream_id="1")
+    )
+
+    store.delete(record.id)
+
+    assert store.get_by_source(SightingSourceType.WHALE_ALERT, "1") is None

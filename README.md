@@ -7,6 +7,8 @@ the service is intended to eventually deploy to AWS.
 ## Project layout
 
 - `service/` — FastAPI application, persists sightings in Valkey, runs in Docker.
+  `service/app/ingest/` — the Whale Alert connector and its local mock server, both opt-in
+  (see "Whale Alert connector" below); the main FastAPI app never imports this package.
 - `client-mqtt/` — vanilla HTML/CSS/JS public client, live-updated via MQTT over WebSockets, runs in Docker.
 - `client-long-poll/` — same public client, live-updated via `GET /sightings/poll` long-polling instead of MQTT.
 - `client-ws/` — same public client, live-updated via a direct WebSocket connection to the service (`GET /sightings/ws`) instead of MQTT or long-polling.
@@ -17,7 +19,9 @@ the service is intended to eventually deploy to AWS.
 - `dnsmasq/` — config for the `dns` service (see `infra/docker-compose.yml`) that resolves
   the `dev.`-subdomain hostnames below.
 - `docker-compose.yml` — the **app** project (Compose project name `wombat-sightings`): runs
-  `service`, `valkey`, `mqtt`, and all four static clients.
+  `service`, `valkey`, `mqtt`, and all four static clients, plus two opt-in,
+  profile-gated services — `whale-alert-connector` and `whale-alert-mock` (see "Whale Alert
+  connector" below).
 - `infra/docker-compose.yml` — the **infra** project (Compose project name `booth-boat`): runs
   `step-ca`, `hydra`, `login-consent`, and `dns`. Split into its own project so this rehearses
   the eventual move of this infrastructure onto a separate physical machine (a Raspberry Pi
@@ -37,6 +41,7 @@ the service is intended to eventually deploy to AWS.
 | 8081 | `client-mqtt` | localhost | app | HTTP |
 | 8082 | `client-long-poll` | localhost | app | HTTP |
 | 8083 | `client-ws` | localhost | app | HTTP |
+| 9100 | `whale-alert-mock` | localhost | app | HTTP, opt-in (`whale-alert-mock` profile — see "Whale Alert connector") |
 | 9000 | `step-ca` | localhost | infra | HTTPS (CA API) |
 | 53 | `dns` | localhost | infra | DNS, tcp + udp |
 | 4444 | `hydra` | auth.dev.booth-boat.org | infra | HTTPS, public (OAuth2/OIDC endpoints, discovery doc) — also reachable at localhost:4444 |
@@ -283,14 +288,20 @@ sighting created, or a sighting deleted, after `since`, or `timeout_seconds` ela
 narrowing `created` — a deleted record's location is no longer known, so `deleted` is
 reported unfiltered). Returns `200` with `{"created": [...], "deleted": [...]}` (tombstones
 only — `id`/`deleted_at`, no sighting data) or `204` (empty) on timeout — used by
-`client-long-poll/` instead of MQTT:
+`client-long-poll/` instead of MQTT. Doesn't report moderation-status changes (the `updated`
+event MQTT/WebSocket clients get from `PATCH .../moderation` — see "Whale Alert connector"
+below); `client-long-poll` won't show a Whale Alert moderation change until reloaded, same
+category of gap as the delete one used to be:
 
 ```bash
 curl "https://localhost:8000/sightings/poll?since=2026-01-01T00:00:00Z&timeout_seconds=5"
 ```
 
 Delete a sighting by id — requires an admin bearer token (see "OAuth2 login for the admin
-client" below); a plain unauthenticated request gets a `401`:
+client" below) or an ingest-scoped one (see "Whale Alert connector" below); a plain
+unauthenticated request gets a `401`. An ingest credential specifically may only delete
+`whale_alert`-sourced records (`403` otherwise) — a compromised or buggy connector can't
+touch local or peer sightings:
 
 ```bash
 curl -X DELETE https://localhost:8000/sightings/<id> \
@@ -303,7 +314,28 @@ Get a single sighting by id:
 curl https://localhost:8000/sightings/<id>
 ```
 
-Get stats (count, oldest, newest sighting) — used by the admin client:
+Look up a sighting by its source and that source's own id — unauthenticated, same posture as
+the endpoint above. This is the dedup/correlation lookup an ingestion process (e.g. the
+Whale Alert connector, below) uses to decide whether it's already seen a given upstream
+record:
+
+```bash
+curl https://localhost:8000/sightings/by-source/whale_alert/<upstream-id>
+```
+
+Update a sighting's moderation status — ingest-scoped bearer token required (see "Whale
+Alert connector" below); 404 if the sighting doesn't exist, 409 if it isn't
+`whale_alert`-sourced:
+
+```bash
+curl -X PATCH https://localhost:8000/sightings/<id>/moderation \
+  -H "Authorization: Bearer <ingest access token>" \
+  -H "Content-Type: application/json" \
+  -d '{"moderation_status": "confirmed"}'
+```
+
+Get stats (count, oldest, newest sighting, plus a per-source breakdown) — used by the admin
+client:
 
 ```bash
 curl https://localhost:8000/sightings/stats
@@ -392,8 +424,7 @@ the MQTT one.
 Open the MQTT client (`http://localhost:8081`), the long-poll client
 (`http://localhost:8082`), and the WebSocket client (`http://localhost:8083`) side by side.
 Submit a sighting in any one — it appears in all three, via three completely different
-mechanisms. Deleting works the same way for the MQTT and WebSocket clients; the long-poll
-client won't reflect a delete until reloaded (see the roadmap). This is the whole point of
+mechanisms. Deleting works the same way in all three now too. This is the whole point of
 having all three: same API, same UI, three different ways a client can find out something
 changed.
 
@@ -459,6 +490,142 @@ Or lower `LOGIN_REMEMBER_SECONDS` in `docker-compose.yml` (e.g. to `60`) if you'
 the form reappear on its own shortly after each login, without running that command every
 time.
 
+## Whale Alert connector
+
+`whale-alert-connector` polls the real [Whale Alert](https://whalealert.org/) service,
+publishes what it finds as sightings on this service (tagged `source.type: "whale_alert"`),
+and tracks Whale Alert's own moderation lifecycle (`Unreviewed`/`Confirmed`/`Unconfirmed`/
+`Deleted`) as updates to the same record rather than duplicate creates — a `Deleted` upstream
+sighting becomes a real `DELETE` here, not a fourth `moderation_status` value. It's
+**opt-in**: a plain `docker compose up` or `./scripts/dev-up.sh` never runs it, never talks
+to Whale Alert, and never needs Whale Alert credentials.
+
+`service/app/ingest/whale_alert_client.py` is the only file in this repo that ever makes a
+real HTTP call to Whale Alert's production API. Everything else in `service/app/ingest/` —
+`hydra_token_client.py`, `service_client.py`, `mapping.py`, `poller.py` — only ever talks to
+this service or our own Hydra.
+
+### One-time setup
+
+1. Register a separate Hydra client for the connector — distinct from the admin client's
+   browser-based login, this one authenticates with a client ID/secret pair
+   (`client_credentials` grant, `sightings:ingest` scope), no browser or redirect involved:
+
+   ```bash
+   ./scripts/register-hydra-ingest-client.sh
+   ```
+
+   Safe to re-run (deletes and re-creates the client, printing a fresh secret each time).
+   Copy the printed client ID/secret for the next step.
+
+2. Copy the connector's env template and fill it in:
+
+   ```bash
+   cp service/.env.whale-alert-connector.example service/.env.whale-alert-connector
+   ```
+
+   - `WHALE_ALERT_CLIENT_ID`/`WHALE_ALERT_CLIENT_SECRET` — the Whale Alert Group-Admin API
+     credential you already hold. This is a completely separate credential from the Hydra
+     one below; **Claude/an AI assistant should never be asked to supply, use, or call this
+     credential against the real Whale Alert API** — that's this repo's standing rule for
+     this integration.
+   - `INGEST_HYDRA_CLIENT_ID`/`INGEST_HYDRA_CLIENT_SECRET` — the ID/secret printed by step 1.
+
+   This file is gitignored (`service/.env.whale-alert-connector` matches `.env.*` in
+   `.gitignore`) — only the `.example` template is committed.
+
+### Running it
+
+Standalone (just the connector plus its real dependencies — valkey, service, hydra):
+
+```bash
+docker compose --profile whale-alert up --build whale-alert-connector
+```
+
+Or as part of the full dev stack:
+
+```bash
+./scripts/dev-up.sh --with-whale-alert
+```
+
+Either way, watch its logs for a full poll cycle (`docker compose logs -f
+whale-alert-connector`); real Whale Alert sightings within `WHALE_ALERT_BBOX` (defaults to
+greater Puget Sound plus the San Juan Islands) should appear as teal pins with `Source:
+whale_alert` in any map client (see "Source-aware map pins" below), and the admin client's
+stats panel should show a non-zero Whale Alert count.
+
+### Startup options at a glance
+
+`--with-whale-alert` and `--with-whale-alert-mock` just control which **containers** start.
+What the connector actually talks to is decided separately, by `WHALE_ALERT_API_BASE_URL` in
+`service/.env.whale-alert-connector` (defaults to the real API). The two flags are
+independent and can technically be passed together, but there's no real use for that beyond
+the mock-testing row below — the connector only ever has one configured target, so running
+both containers doesn't mean "talks to both."
+
+| Command | Connector running? | Mock running? | Connector's target | What you'll see |
+|---|---|---|---|---|
+| `./scripts/dev-up.sh` | No | No | — | Local sightings only, as blue dots. No Whale Alert data at all. |
+| `./scripts/dev-up.sh --with-whale-alert-mock` | No | Yes | — | Same as above — the mock just sits there; nothing polls it without the connector also running. Useful for poking at it directly with `curl`. |
+| `./scripts/dev-up.sh --with-whale-alert` | Yes | No | Real Whale Alert (default `WHALE_ALERT_API_BASE_URL`) | Real Whale Alert sightings as teal dots. Needs real credentials in `.env.whale-alert-connector`. |
+| `./scripts/dev-up.sh --with-whale-alert --with-whale-alert-mock`, `.env.whale-alert-connector`'s `WHALE_ALERT_API_BASE_URL` set to `http://whale-alert-mock:9100` (see "Testing safely against a local mock" below) | Yes | Yes | The local mock | The mock's fixture sightings as teal dots — safe to repeat. `POST http://localhost:9100/_mock/advance` to watch moderation updates/deletes happen. |
+
+Everything above composes with `docker compose --profile ... up --build`/`down` too, if you'd
+rather skip `dev-up.sh`/`dev-down.sh` and drive Compose directly — the profiles are exactly
+`whale-alert` and `whale-alert-mock`, same names either way. `./scripts/dev-down.sh` tears
+down both regardless of which flags brought them up (it runs `docker compose --profile '*'
+down`, not a plain `down`, specifically so nothing gets orphaned).
+
+### Testing safely against a local mock
+
+`whale-alert-mock` (`service/app/ingest/mock_whale_alert_server.py`) fakes just enough of
+Whale Alert's real API shape — `POST /auth/token`, `GET /sightings` — to exercise the
+connector end-to-end without ever touching production. Seeded from real, already-saved,
+PII-redacted example records, plus a few synthesized siblings placed inside the default
+bbox so there's something in-region to create. This is the one piece of the whole
+integration safe to run and iterate on directly, including by an AI assistant, since it's a
+local fake, not Whale Alert's production service.
+
+```bash
+docker compose --profile whale-alert-mock up --build whale-alert-mock
+```
+
+Point the connector at it instead of the real API — in `service/.env.whale-alert-connector`:
+
+```
+WHALE_ALERT_API_BASE_URL=http://whale-alert-mock:9100
+WHALE_ALERT_CLIENT_ID=mock-client-id
+WHALE_ALERT_CLIENT_SECRET=mock-client-secret
+```
+
+`whale-alert-mock` has its own profile (`whale-alert-mock`), deliberately separate from the
+connector's (`whale-alert`), so the two toggle independently — bring up either alone, or
+both together (`docker compose --profile whale-alert --profile whale-alert-mock up --build`).
+`POST http://localhost:9100/_mock/advance` steps every fixture's moderation status forward
+one notch (capped at Deleted) between poll cycles — real captured examples are static
+snapshots and can't demonstrate a transition on their own, so this is what lets you actually
+watch the connector's `PATCH .../moderation` and `DELETE` paths fire, not just its create
+path. `POST http://localhost:9100/_mock/reset` restores the original fixture data.
+
+### How it decides what to do
+
+Whale Alert's API has no "last modified" field to cursor forward from — only `created`
+(submission time) — so instead of an incremental cursor, every poll cycle re-scans a fixed
+trailing window (`WHALE_ALERT_LOOKBACK_DAYS`, default 14) across all four moderation
+statuses, filtered by `WHALE_ALERT_BBOX`. For each result: look it up via `GET
+/sightings/by-source/whale_alert/{id}`; not found → create; found with a different mapped
+status → `PATCH .../moderation`; mapped to Deleted → `DELETE`, plus a permanent note in a
+Valkey set (`ingest:whale_alert:retired`) so that upstream id is never recreated on a later
+cycle once it's gone.
+
+### Source-aware map pins
+
+Every sighting's marker on `client-mqtt`/`client-long-poll`/`client-ws`'s map is now a small
+colored dot instead of a default pin, keyed by `source.type`: blue for `local`, amber for
+`peer`, teal for `whale_alert` — and each popup gains a `Source: ...` line. `client-admin`'s
+stats panel shows a Local/Peer/Whale Alert breakdown alongside the existing count/oldest/
+newest.
+
 ## Running the service outside Docker (for development)
 
 Needs Python 3.10+ (see [Prerequisites](#prerequisites)) — use `python3.10`/`python3.12`/etc.
@@ -510,11 +677,25 @@ See `service/app/models.py` for the full schema. A sighting envelope has this sh
     "id": "observer identifier (placeholder until auth exists)",
     "location": { "geometry": "same shape as sighting.location" }
   },
-  "images": []
+  "images": [],
+  "source": {
+    "type": "local | peer | whale_alert",
+    "peer_id": "which peer deployment reported this (peer sightings only) | null",
+    "upstream_id": "that source's own id for this sighting, e.g. Whale Alert's numeric id | null"
+  },
+  "moderation_status": "unreviewed | confirmed | unconfirmed | null"
 }
 ```
 
 Coordinates are in GeoJSON order: `[longitude, latitude]`.
+
+`source` defaults to `{"type": "local", "peer_id": null, "upstream_id": null}` for anything
+submitted through the public report form or `POST /sightings` without an ingest-scoped
+bearer token. `whale_alert`-sourced records (see "Whale Alert connector" below) are the only
+ones with a non-null `moderation_status`, tracking Whale Alert's own moderation lifecycle —
+there's deliberately no `"deleted"` value here; a Whale Alert sighting moving to its
+"Deleted" state maps to a real `DELETE /sightings/{id}` instead (restricted to
+`whale_alert`-sourced records for an ingest-authenticated caller — see below).
 
 `created_at` is distinct from `sighting.location.geometry.properties.datetime`: the latter
 is user-editable and backdatable (the report form supports "reporting a sighting after the
@@ -559,3 +740,16 @@ This project is being built in stages:
    broker involved at all, at the cost of the client having to handle its own reconnection
    (unlike `mqtt.js`, the native WebSocket API doesn't do that for you). Reflects both
    creates and deletes live, same as `client-mqtt`.
+10. **Done**: real ingestion from [Whale Alert](https://whalealert.org/) — see "Whale Alert
+    connector" above. A generic three-way `source` (`local`/`peer`/`whale_alert`) and a
+    `require_scope()` OAuth2 dependency factory (alongside the existing admin-role check)
+    were built as part of this, so a later peer-service demo can reuse both rather than
+    re-deriving them. Known gaps, left deliberately for now: `GET /sightings/poll`
+    (long-poll) doesn't reflect a Whale Alert moderation-status change, only creates/deletes
+    (see its docs above); Whale Alert's own polling is a fixed 14-day re-scan every cycle
+    rather than an incremental cursor, since its API has no "last modified" field to cursor
+    from.
+11. A simulated peer-service demo, showing JSON-LD + HATEOAS discovery: a second container
+    generating moving-whale sightings, discovering this service's capabilities from a root
+    document instead of hardcoding endpoints, authenticating via Hydra client-credentials,
+    and subscribing to live-sync — not yet built.

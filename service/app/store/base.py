@@ -2,13 +2,40 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from uuid import UUID
 
-from app.models import SightingCreate, SightingDeletion, SightingRecord, SightingStats
+from app.models import (
+    ModerationStatus,
+    SightingCreate,
+    SightingDeletion,
+    SightingRecord,
+    SightingSource,
+    SightingSourceType,
+    SightingStats,
+)
 
 
 class SightingStore(ABC):
     @abstractmethod
-    def create(self, payload: SightingCreate) -> SightingRecord:
-        """Persist a new sighting and return the record with its assigned id."""
+    def create(
+        self,
+        payload: SightingCreate,
+        source: SightingSource | None = None,
+        moderation_status: ModerationStatus | None = None,
+    ) -> SightingRecord:
+        """Persist a new sighting and return the record with its assigned id. `source` and
+        `moderation_status` default to a local, unmoderated sighting when omitted — existing
+        store.create(payload) call sites are unaffected."""
+
+    @abstractmethod
+    def update(self, record: SightingRecord) -> SightingRecord | None:
+        """Replace an existing sighting in place (re-deriving every index exactly as
+        create() does from a fresh record) and return it, or None if its id doesn't
+        exist."""
+
+    @abstractmethod
+    def get_by_source(self, source_type: SightingSourceType, upstream_id: str) -> SightingRecord | None:
+        """Return the sighting tagged with this source type and upstream id, or None —
+        the dedup/correlation lookup an ingestion process needs across poll cycles,
+        without scanning every sighting."""
 
     @abstractmethod
     def list_all(self) -> list[SightingRecord]:

@@ -277,4 +277,9 @@ def test_stats_on_empty_store(client):
 
     assert response.status_code == 200
     body = response.json()
-    assert body == {"count": 0, "oldest": None, "newest": None}
+    assert body == {
+        "count": 0,
+        "oldest": None,
+        "newest": None,
+        "by_source": {"local": 0, "peer": 0, "whale_alert": 0},
+    }

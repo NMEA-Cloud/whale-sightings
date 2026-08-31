@@ -44,6 +44,12 @@ secrets:
 
 strategies:
   access_token: jwt
+  jwt:
+    # Emits both the legacy `scp` array (fosite's original, pre-RFC-9068 default) and the
+    # RFC 9068-standard `scope` string on every JWT access token — this app's own
+    # _token_scopes() (service/app/auth.py) already reads either shape, so "both" costs
+    # nothing here and keeps tokens usable by any RFC 9068-strict consumer too.
+    scope_claim: both
 
 ttl:
   access_token: 15m

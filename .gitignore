@@ -6,8 +6,12 @@ __pycache__/
 .venv/
 venv/
 
-# Env files
+# Env files. The bare ".env" pattern alone only matches a file literally named that — it
+# does NOT match "service/.env.whale-alert-connector" (a real secrets file, not an example
+# template), which is exactly the gap ".env.*" plus the "!...example" exception closes.
 .env
+.env.*
+!.env.*.example
 client-mqtt/config.js
 client-long-poll/config.js
 client-admin/config.js

@@ -58,12 +58,37 @@ class Observer(BaseModel):
     location: Location
 
 
+class SightingSourceType(str, Enum):
+    LOCAL = "local"
+    PEER = "peer"  # reserved for the not-yet-built peer-service demo
+    WHALE_ALERT = "whale_alert"
+
+
+class SightingSource(BaseModel):
+    type: SightingSourceType = SightingSourceType.LOCAL
+    peer_id: str | None = None  # which peer deployment (peer-service demo) — an identity claim
+    upstream_id: str | None = None  # this source's own id for this sighting (e.g. Whale
+    # Alert's numeric id) — the dedup/correlation key used by GET /sightings/by-source
+
+
+class ModerationStatus(str, Enum):
+    UNREVIEWED = "unreviewed"
+    CONFIRMED = "confirmed"
+    UNCONFIRMED = "unconfirmed"
+    # No DELETED member on purpose — a Whale Alert "Deleted" transition maps to a real
+    # DELETE /sightings/{id} call instead, not a 4th value here.
+
+
 class SightingCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     sighting: SightingData
     observer: Observer
     images: list[str] = []
+    # Only honored server-side when the caller authenticates via the ingest scope — derived
+    # from the token for any other caller, never trusted from the body (anti-spoofing).
+    source_upstream_id: str | None = None
+    source_moderation_status: ModerationStatus | None = None
 
 
 class SightingRecord(BaseModel):
@@ -77,6 +102,8 @@ class SightingRecord(BaseModel):
     sighting: SightingData
     observer: Observer
     images: list[str] = []
+    source: SightingSource = SightingSource()
+    moderation_status: ModerationStatus | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -96,11 +123,33 @@ class SightingRecord(BaseModel):
                 pass
         return data
 
+    @model_validator(mode="before")
+    @classmethod
+    def _backfill_source_for_legacy_records(cls, data: Any) -> Any:
+        """Same rationale as _backfill_created_at_for_legacy_records above: records written
+        before `source` existed have no such key in their stored JSON. Default them to a
+        local source rather than fail to hydrate — every sighting before this field existed
+        was, by definition, locally reported."""
+        if isinstance(data, dict) and data.get("source") is None:
+            data = {**data, "source": {"type": SightingSourceType.LOCAL}}
+        return data
+
 
 class SightingStats(BaseModel):
     count: int
     oldest: SightingRecord | None
     newest: SightingRecord | None
+    by_source: dict[SightingSourceType, int] = {}
+
+
+class ModerationUpdate(BaseModel):
+    """Body for PATCH /sightings/{id}/moderation — deliberately narrow (a single field,
+    extra="forbid") rather than a general PUT, so it can't be used to touch anything else
+    about a sighting."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    moderation_status: ModerationStatus
 
 
 class SightingDeletion(BaseModel):

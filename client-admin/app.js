@@ -16,6 +16,9 @@ let accessToken = null;
 const statCount = document.getElementById("stat-count");
 const statOldest = document.getElementById("stat-oldest");
 const statNewest = document.getElementById("stat-newest");
+const statSourceLocal = document.getElementById("stat-source-local");
+const statSourcePeer = document.getElementById("stat-source-peer");
+const statSourceWhaleAlert = document.getElementById("stat-source-whale-alert");
 const statsStatus = document.getElementById("stats-status");
 const refreshStatsButton = document.getElementById("refresh-stats-button");
 const scenarioButtonsContainer = document.getElementById("scenario-buttons");
@@ -47,6 +50,9 @@ async function refreshStats() {
   statCount.textContent = stats.count;
   statOldest.textContent = formatSightingSummary(stats.oldest);
   statNewest.textContent = formatSightingSummary(stats.newest);
+  statSourceLocal.textContent = stats.by_source?.local ?? 0;
+  statSourcePeer.textContent = stats.by_source?.peer ?? 0;
+  statSourceWhaleAlert.textContent = stats.by_source?.whale_alert ?? 0;
 }
 
 function isoOffset(hoursAgo) {

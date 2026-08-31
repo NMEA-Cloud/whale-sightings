@@ -70,6 +70,55 @@ services:
       mqtt:
         condition: service_healthy
 
+  # Polls the real Whale Alert service and publishes what it finds onto this service — see
+  # the README's "Whale Alert connector" section for one-time setup (Hydra ingest-client
+  # registration, .env.whale-alert-connector). Opt-in via the "whale-alert" profile so a
+  # plain `docker compose up` never touches Whale Alert's production API; run it alone with
+  # `docker compose --profile whale-alert up whale-alert-connector` (plus valkey/service/
+  # hydra) or as part of the full stack with `./scripts/dev-up.sh --with-whale-alert`.
+  whale-alert-connector:
+    build: ./service
+    command: python -m app.ingest.poller
+    profiles: ["whale-alert"]
+    env_file:
+      # Gitignored — real Whale Alert and Hydra ingest-client credentials. Copy
+      # service/.env.whale-alert-connector.example and fill it in (see the README).
+      - service/.env.whale-alert-connector
+    environment:
+      INGEST_SERVICE_API_BASE: https://service:8000
+      INGEST_CA_BUNDLE_PATH: /certs/rootCA.pem
+      INGEST_HYDRA_TOKEN_URL: https://hydra:4444/oauth2/token
+      INGEST_HYDRA_AUDIENCE: https://api.dev.wombat-sightings.org:8000
+      VALKEY_HOST: valkey
+      VALKEY_PORT: 6379
+    volumes:
+      - ./certs:/certs:ro
+    networks:
+      default: {}
+      whale-sightings-net: {}
+    depends_on:
+      valkey:
+        condition: service_healthy
+      service:
+        condition: service_started
+
+  # A local fake of Whale Alert's API (service/app/ingest/mock_whale_alert_server.py) — the
+  # one piece of this integration safe to run and verify directly, since it's not the real
+  # production service. Own profile, deliberately separate from whale-alert-connector's, so
+  # the two toggle independently: point the connector at this instead of the real Whale
+  # Alert base URL by setting WHALE_ALERT_API_BASE_URL=http://whale-alert-mock:9100 and
+  # WHALE_ALERT_CLIENT_ID/SECRET=mock-client-id/mock-client-secret in
+  # .env.whale-alert-connector — no code change needed anywhere.
+  whale-alert-mock:
+    build: ./service
+    command: python -m app.ingest.mock_whale_alert_server
+    profiles: ["whale-alert-mock"]
+    ports:
+      - "9100:9100"
+    environment:
+      MOCK_CLIENT_ID: mock-client-id
+      MOCK_CLIENT_SECRET: mock-client-secret
+
   # --- Static clients ---
   #
   # config.js is templated from the API_BASE/MQTT_WS_URL env vars below at container start

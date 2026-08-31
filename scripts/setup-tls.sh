@@ -55,15 +55,18 @@ if ! security find-certificate -Z -a /Library/Keychains/System.keychain 2>/dev/n
   sudo step certificate install ~/.step/certs/root_ca.crt
 fi
 
-# "hydra" and "mqtt" are always included: they're the fixed Docker-network hostnames
-# login-consent/service use to reach Hydra's admin API and the MQTT broker (docker-compose.yml's
-# service names for them), not per-machine values. auth.dev.booth-boat.org/
+# "hydra", "mqtt", and "service" are always included: they're the fixed Docker-network
+# hostnames login-consent/service/whale-alert-connector use to reach Hydra's admin API, the
+# MQTT broker, and the service itself (docker-compose.yml's service names for them), not
+# per-machine values. "service" specifically is what whale-alert-connector's
+# INGEST_SERVICE_API_BASE (https://service:8000) connects to — without it here, the
+# connector's TLS verification fails with a hostname mismatch. auth.dev.booth-boat.org/
 # api.dev.wombat-sightings.org are also always included: they're Hydra's/service's fixed
 # browser-facing identities (URLS_SELF_ISSUER, PUBLIC_API_BASE_URL — see
 # docker-compose.yml/infra/docker-compose.yml), not per-machine values either. Omitting any of
-# these here would silently break the OAuth2 login flow or MQTT TLS on the next cert
-# re-issuance.
-SANS=(--san localhost --san 127.0.0.1 --san ::1 --san hydra --san mqtt \
+# these here would silently break the OAuth2 login flow, MQTT TLS, or the whale-alert
+# connector on the next cert re-issuance.
+SANS=(--san localhost --san 127.0.0.1 --san ::1 --san hydra --san mqtt --san service \
   --san auth.dev.booth-boat.org --san api.dev.wombat-sightings.org)
 for host in "$@"; do
   SANS+=(--san "$host")

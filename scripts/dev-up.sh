@@ -13,7 +13,35 @@
 # Requires tmux (brew install tmux), scripts/setup-tls.sh to have been run at least once, and
 # the shared external network the two compose projects join (one-time setup):
 #   docker network create whale-sightings-net
+#
+# Usage: ./scripts/dev-up.sh [--with-whale-alert] [--with-whale-alert-mock]
+#   --with-whale-alert        Also start whale-alert-connector (opt-in, real Whale Alert API
+#                              calls by default — see the README). Requires
+#                              service/.env.whale-alert-connector (copy
+#                              service/.env.whale-alert-connector.example) and the Hydra
+#                              ingest client (scripts/register-hydra-ingest-client.sh) to
+#                              already be set up. Omitted by default — the connector stays off.
+#   --with-whale-alert-mock   Also start whale-alert-mock, a local fake of Whale Alert's API
+#                              safe to run without any real credentials — see the README.
+#                              Combine with --with-whale-alert and point
+#                              WHALE_ALERT_API_BASE_URL at it in .env.whale-alert-connector to
+#                              have the connector actually talk to it; this flag only starts
+#                              the mock container, it doesn't rewrite that env file for you.
 set -euo pipefail
+
+WITH_WHALE_ALERT=false
+WITH_WHALE_ALERT_MOCK=false
+for arg in "$@"; do
+  case "$arg" in
+    --with-whale-alert) WITH_WHALE_ALERT=true ;;
+    --with-whale-alert-mock) WITH_WHALE_ALERT_MOCK=true ;;
+    *)
+      echo "Unknown argument: $arg" >&2
+      echo "Usage: $0 [--with-whale-alert] [--with-whale-alert-mock]" >&2
+      exit 1
+      ;;
+  esac
+done
 
 cd "$(dirname "$0")/.."
 REPO_ROOT="$(pwd)"
@@ -54,7 +82,16 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
   fi
 fi
 
-tmux new-session -d -s "$SESSION" -n docker -c "$REPO_ROOT" "docker compose up --build"
+PROFILE_ARGS=()
+if [ "$WITH_WHALE_ALERT" = true ]; then
+  PROFILE_ARGS+=(--profile whale-alert)
+fi
+if [ "$WITH_WHALE_ALERT_MOCK" = true ]; then
+  PROFILE_ARGS+=(--profile whale-alert-mock)
+fi
+DOCKER_UP_CMD="docker compose ${PROFILE_ARGS[*]-} up --build"
+
+tmux new-session -d -s "$SESSION" -n docker -c "$REPO_ROOT" "$DOCKER_UP_CMD"
 # If a window's process dies (either of the two, but this matters most for the two docker
 # compose windows — see the header comment), keep the pane around showing its last output
 # instead of the window silently vanishing, which is what made the stale-session case above
@@ -67,6 +104,12 @@ tmux send-keys -t "$SESSION:shell" "source service/.venv/bin/activate" Enter
 tmux select-window -t "$SESSION:docker"
 
 echo "Started tmux session '$SESSION': docker | infra | shell"
+if [ "$WITH_WHALE_ALERT" = true ]; then
+  echo "whale-alert-connector is included (--with-whale-alert)."
+fi
+if [ "$WITH_WHALE_ALERT_MOCK" = true ]; then
+  echo "whale-alert-mock is included (--with-whale-alert-mock)."
+fi
 echo "Switch windows with Ctrl-b <number>, detach with Ctrl-b d."
 echo "Tear down with ./scripts/dev-down.sh"
 

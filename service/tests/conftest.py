@@ -2,7 +2,7 @@ import fakeredis
 import pytest
 from fastapi.testclient import TestClient
 
-from app.auth import require_admin
+from app.auth import require_admin, require_admin_or_ingest
 from app.deps import get_mqtt_publisher, get_store, get_ws_broadcaster
 from app.main import create_app
 from app.mqtt import MqttPublisher
@@ -57,8 +57,14 @@ def client(store, mqtt_publisher, ws_broadcaster):
     app.dependency_overrides[get_mqtt_publisher] = lambda: mqtt_publisher
     app.dependency_overrides[get_ws_broadcaster] = lambda: ws_broadcaster
     # Auth is exercised on its own in test_auth.py — every other test in this suite predates
-    # auth and shouldn't need a real token just to call DELETE.
+    # auth and shouldn't need a real token just to call DELETE. delete_sighting depends on
+    # require_admin_or_ingest (not require_admin directly) — it calls require_admin() as a
+    # plain function, not via Depends(), so overriding require_admin alone wouldn't reach
+    # it. Both are overridden so a direct require_admin dependency elsewhere would also stay
+    # bypassed. No scp/scope claim here, matching plain admin-bypass semantics: an ingest-
+    # scope-specific test needs test_auth.py's own tokens instead.
     app.dependency_overrides[require_admin] = lambda: {"sub": "test-admin", "ext": {"role": "admin"}}
+    app.dependency_overrides[require_admin_or_ingest] = lambda: {"sub": "test-admin", "ext": {"role": "admin"}}
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
