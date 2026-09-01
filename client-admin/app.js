@@ -90,13 +90,13 @@ const SCENARIOS = [
     ],
   },
   {
-    id: "pod-san-juan",
-    label: "Pod near San Juan Islands",
+    id: "pod-fort-ebey",
+    label: "Pod west of Fort Ebey State Park",
     build: () => [
-      buildSighting({ lon: -123.1524, lat: 48.5165, hoursAgo: 0.1, status: "alive", type: "orca", species: "Orcinus orca", name: "J1", method: "manual-report", comments: "Traveling south past Lime Kiln Point." }),
-      buildSighting({ lon: -123.148, lat: 48.514, hoursAgo: 0.15, status: "alive", type: "orca", species: "Orcinus orca", name: "J2", method: "manual-report", comments: "Same pod, trailing J1." }),
-      buildSighting({ lon: -123.156, lat: 48.519, hoursAgo: 0.2, status: "alive", type: "orca", species: "Orcinus orca", name: "K12", method: "manual-report", comments: "K-Pod member, spy-hopping." }),
-      buildSighting({ lon: -123.16, lat: 48.522, hoursAgo: 0.3, status: "alive", type: "orca", species: "Orcinus orca", name: "L25", method: "manual-report", comments: "L-Pod matriarch sighted with a calf." }),
+      buildSighting({ lon: -122.7852, lat: 48.1902, hoursAgo: 0.1, status: "alive", type: "orca", species: "Orcinus orca", name: "J1", method: "manual-report", comments: "Traveling south along Admiralty Inlet, west of Fort Ebey State Park." }),
+      buildSighting({ lon: -122.781, lat: 48.1855, hoursAgo: 0.15, status: "alive", type: "orca", species: "Orcinus orca", name: "J2", method: "manual-report", comments: "Same pod, trailing J1." }),
+      buildSighting({ lon: -122.787, lat: 48.181, hoursAgo: 0.2, status: "alive", type: "orca", species: "Orcinus orca", name: "K12", method: "manual-report", comments: "K-Pod member, spy-hopping off the Fort Ebey bluffs." }),
+      buildSighting({ lon: -122.792, lat: 48.1775, hoursAgo: 0.3, status: "alive", type: "orca", species: "Orcinus orca", name: "L25", method: "manual-report", comments: "L-Pod matriarch sighted with a calf, west of Point Partridge." }),
     ],
   },
   {
