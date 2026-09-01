@@ -51,7 +51,11 @@ def test_build_root_document_links_include_key_endpoints():
     doc = build_root_document("https://example.org:8000", settings)
 
     assert doc["_links"]["self"]["href"] == "https://example.org:8000/"
-    assert doc["_links"]["sightings:create"] == {"href": "https://example.org:8000/sightings", "method": "POST"}
+    assert doc["_links"]["sightings:create"] == {
+        "href": "https://example.org:8000/sightings",
+        "method": "POST",
+        "scope": "peer:write",
+    }
     assert doc["_links"]["sightings:by-source"]["templated"] is True
     assert doc["_links"]["sightings:live-sync"]["href"] == "wss://example.org:8000/sightings/ws"
     assert doc["_links"]["mqtt:broker"] == {

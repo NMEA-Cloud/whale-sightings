@@ -136,9 +136,16 @@ services:
       # peer-service/.env.example and fill it in (see the README).
       - peer-service/.env
     environment:
+      # Hydra's token endpoint, the audience, and the peer:write scope are all discovered
+      # from API_BASE's own root document and the OAuth metadata it links to — see
+      # peer-service/main.py's discover_auth(). Only the client's own credentials
+      # (peer-service/.env, above) are pre-shared config.
       API_BASE: https://service:8000
-      HYDRA_TOKEN_URL: https://hydra:4444/oauth2/token
-      HYDRA_AUDIENCE: https://api.dev.wombat-sightings.org:8000
+      # Hydra's own discovery document always publishes its browser-facing issuer address
+      # (a `dev.` LAN hostname this container's DNS can't resolve to anywhere reachable) —
+      # this points the actual network calls at the Docker-internal hydra hostname instead,
+      # same fix and same reason as service's own OAUTH_JWKS_URL below.
+      HYDRA_INTERNAL_BASE_URL: https://hydra:4444
       CA_BUNDLE_PATH: /certs/rootCA.pem
     volumes:
       - ./certs:/certs:ro

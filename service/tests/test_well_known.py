@@ -6,5 +6,5 @@ def test_oauth_protected_resource_document(client):
         "resource": "https://localhost:8000",
         "authorization_servers": ["https://localhost:4444"],
         "bearer_methods_supported": ["header"],
-        "scopes_supported": ["openid"],
+        "scopes_supported": ["sightings:ingest", "peer:write"],
     }
