@@ -109,6 +109,7 @@ def require_scope(required_scope: str):
 
 
 require_ingest = require_scope("sightings:ingest")
+require_peer = require_scope("peer:write")
 
 
 def try_require_ingest(request: Request) -> dict[str, Any] | None:
@@ -118,6 +119,16 @@ def try_require_ingest(request: Request) -> dict[str, Any] | None:
     public report form sends no token at all)."""
     try:
         return require_ingest(request)
+    except HTTPException:
+        return None
+
+
+def try_require_peer(request: Request) -> dict[str, Any] | None:
+    """Like try_require_ingest, but for a peer-service caller (scope peer:write) instead of
+    the ingest one — same open-by-default shape, since create_sighting has to recognize an
+    authenticated peer without rejecting every other caller that sends no token at all."""
+    try:
+        return require_peer(request)
     except HTTPException:
         return None
 

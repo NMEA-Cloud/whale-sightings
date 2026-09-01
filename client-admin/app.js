@@ -229,11 +229,13 @@ async function clearAllSightings() {
   let skippedCount = 0;
 
   for (const record of sightings) {
-    // Whale Alert is the single source of truth for its own data — only the ingest
-    // connector (acting on Whale Alert's own moderation status) may delete these, never an
-    // admin. Skipped up front rather than attempted-then-403'd, so one Whale Alert record
-    // doesn't abort the rest of this loop (see delete_sighting in routers/sightings.py).
-    if (record.source?.type === "whale_alert") {
+    // The service already knows which records an admin can delete — a `delete` link is
+    // only present when the record's source allows it (see can_delete_record in
+    // discovery.py: local only, not whale_alert or peer). Skipped here rather than
+    // attempted-then-403'd, so one non-deletable record doesn't abort the rest of this
+    // loop (see delete_sighting in routers/sightings.py for the same rule enforced
+    // server-side).
+    if (!record._links?.delete) {
       skippedCount++;
       continue;
     }
@@ -261,7 +263,7 @@ async function clearAllSightings() {
     deletedCount++;
   }
 
-  const skippedNote = skippedCount > 0 ? ` Left ${skippedCount} Whale Alert-sourced sighting(s) alone.` : "";
+  const skippedNote = skippedCount > 0 ? ` Left ${skippedCount} non-deletable sighting(s) alone (Whale Alert/peer).` : "";
   setStatus(clearStatus, `Deleted ${deletedCount} sighting(s).${skippedNote}`, false);
   await refreshStats();
 }

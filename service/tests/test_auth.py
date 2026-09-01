@@ -61,6 +61,24 @@ def _make_ingest_token(
     return jwt.encode(payload, _private_key, algorithm="RS256")
 
 
+def _make_peer_token(*, scopes: list[str] | None = ["peer:write"], client_id: str = "whale-sightings-peer") -> str:
+    # Same client_credentials shape as _make_ingest_token, but also sets `client_id` (a real
+    # Hydra token carries this alongside `sub` for client_credentials grants — confirmed
+    # against a real minted token) since create_sighting derives source.peer_id from it.
+    now = datetime.now(timezone.utc)
+    payload = {
+        "iss": ISSUER,
+        "aud": AUDIENCE,
+        "sub": client_id,
+        "client_id": client_id,
+        "iat": now,
+        "exp": now + timedelta(minutes=15),
+    }
+    if scopes is not None:
+        payload["scp"] = scopes
+    return jwt.encode(payload, _private_key, algorithm="RS256")
+
+
 class _FakeSigningKey:
     def __init__(self, key):
         self.key = key
@@ -395,6 +413,78 @@ def test_admin_delete_on_whale_alert_record_returns_403(auth_client):
 
     response = auth_client.delete(
         f"/sightings/{created['id']}", headers={"Authorization": f"Bearer {_make_token()}"}
+    )
+
+    assert response.status_code == 403
+
+
+def test_peer_create_tags_source_with_peer_id_from_token(auth_client):
+    response = auth_client.post(
+        "/sightings",
+        json=sample_payload_dict(),
+        headers={"Authorization": f"Bearer {_make_peer_token(client_id='whale-sightings-peer')}"},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["source"] == {"type": "peer", "peer_id": "whale-sightings-peer", "upstream_id": None}
+
+
+def test_peer_create_ignores_body_supplied_upstream_id(auth_client):
+    # source_upstream_id/source_moderation_status are ingest-only fields — a peer caller
+    # sending them shouldn't do anything (peer_id always comes from the token, never body).
+    payload = sample_payload_dict()
+    payload["source_upstream_id"] = "should-be-ignored"
+
+    response = auth_client.post(
+        "/sightings", json=payload, headers={"Authorization": f"Bearer {_make_peer_token()}"}
+    )
+
+    body = response.json()
+    assert body["source"]["upstream_id"] is None
+
+
+def test_peer_sourced_response_has_no_delete_link(auth_client):
+    response = auth_client.post(
+        "/sightings", json=sample_payload_dict(), headers={"Authorization": f"Bearer {_make_peer_token()}"}
+    )
+
+    assert "delete" not in response.json()["_links"]
+
+
+def test_admin_delete_on_peer_record_returns_403(auth_client):
+    created = auth_client.post(
+        "/sightings", json=sample_payload_dict(), headers={"Authorization": f"Bearer {_make_peer_token()}"}
+    ).json()
+
+    response = auth_client.delete(
+        f"/sightings/{created['id']}", headers={"Authorization": f"Bearer {_make_token()}"}
+    )
+
+    assert response.status_code == 403
+
+
+def test_ingest_delete_on_peer_record_returns_403(auth_client):
+    created = auth_client.post(
+        "/sightings", json=sample_payload_dict(), headers={"Authorization": f"Bearer {_make_peer_token()}"}
+    ).json()
+
+    response = auth_client.delete(
+        f"/sightings/{created['id']}", headers={"Authorization": f"Bearer {_make_ingest_token()}"}
+    )
+
+    assert response.status_code == 403
+
+
+def test_peer_token_cannot_delete_any_sighting(auth_client):
+    # require_admin_or_ingest doesn't accept a peer-scoped-only token at all — it's neither
+    # an admin token (no ext.role) nor an ingest one (wrong scope) — so a bare peer token is
+    # rejected before delete_sighting's own source-based checks ever run, even against a
+    # perfectly ordinary local sighting.
+    created = auth_client.post("/sightings", json=sample_payload_dict()).json()
+
+    response = auth_client.delete(
+        f"/sightings/{created['id']}", headers={"Authorization": f"Bearer {_make_peer_token()}"}
     )
 
     assert response.status_code == 403

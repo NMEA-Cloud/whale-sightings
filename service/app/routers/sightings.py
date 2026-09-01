@@ -3,16 +3,16 @@ import time
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect, status
 
-from app.auth import require_admin_or_ingest, require_ingest, token_scopes, try_require_ingest
+from app.auth import require_admin_or_ingest, require_ingest, token_scopes, try_require_ingest, try_require_peer
 from app.config import get_settings
 from app.deps import get_mqtt_publisher, get_store, get_ws_broadcaster, get_ws_broadcaster_ws
+from app.discovery import annotate_record, can_delete_record
 from app.models import (
     ModerationUpdate,
     PollResult,
     SightingCreate,
-    SightingRecord,
     SightingSource,
     SightingSourceType,
     SightingStats,
@@ -46,37 +46,45 @@ def _location_filter_or_none(
     return lat, lon, radius_nm
 
 
-@router.post("/sightings", response_model=SightingRecord, status_code=status.HTTP_201_CREATED)
+@router.post("/sightings", status_code=status.HTTP_201_CREATED)
 def create_sighting(
     payload: SightingCreate,
+    request: Request,
     store: SightingStore = Depends(get_store),
     mqtt: MqttPublisher = Depends(get_mqtt_publisher),
     ws: WsBroadcaster = Depends(get_ws_broadcaster),
     ingest_claims: dict | None = Depends(try_require_ingest),
-) -> SightingRecord:
-    # An ingest-authenticated caller (the whale-alert-connector) tags its own source —
-    # never trusted from the request body, only from the token, so a caller can't spoof a
-    # different source_upstream_id claiming to be an existing sighting's owner. Any other
-    # caller (the public report form, no token at all) keeps today's plain local behavior.
+    peer_claims: dict | None = Depends(try_require_peer),
+) -> dict:
+    # An authenticated ingest or peer caller tags its own source — never trusted from the
+    # request body, only from the token, so a caller can't spoof a different
+    # source_upstream_id/peer identity claiming to be an existing sighting's owner. Any
+    # other caller (the public report form, no token at all) keeps today's plain local
+    # behavior. Ingest is checked first only because that's the order these two
+    # dependencies happen to be declared in — a token can't realistically carry both
+    # scopes given how the two clients are registered.
     source = None
     if ingest_claims is not None:
         source = SightingSource(type=SightingSourceType.WHALE_ALERT, upstream_id=payload.source_upstream_id)
+    elif peer_claims is not None:
+        source = SightingSource(type=SightingSourceType.PEER, peer_id=peer_claims.get("client_id"))
     moderation_status = payload.source_moderation_status if ingest_claims is not None else None
 
     record = store.create(payload, source=source, moderation_status=moderation_status)
     mqtt.publish("created", str(record.id))
     ws.broadcast("created", str(record.id))
-    return record
+    return annotate_record(record, str(request.base_url), can_delete_record(record))
 
 
-@router.get("/sightings", response_model=list[SightingRecord])
+@router.get("/sightings")
 def list_sightings(
+    request: Request,
     since_hours: float | None = Query(default=None, gt=0, description="Only return sightings from the last N hours"),
     lat: float | None = Query(default=None, ge=-90, le=90, description="Latitude of the search center"),
     lon: float | None = Query(default=None, ge=-180, le=180, description="Longitude of the search center"),
     radius_nm: float | None = Query(default=None, gt=0, description="Search radius in nautical miles"),
     store: SightingStore = Depends(get_store),
-) -> list[SightingRecord]:
+) -> list[dict]:
     location_filter = _location_filter_or_none(lat, lon, radius_nm)
 
     if location_filter is not None:
@@ -94,7 +102,8 @@ def list_sightings(
             r for r in records if r.sighting.location.geometry.properties.datetime >= cutoff
         ]
 
-    return records
+    base_url = str(request.base_url)
+    return [annotate_record(r, base_url, can_delete_record(r)) for r in records]
 
 
 # Declared before the "/sightings/{sighting_id}" path param route (same reasoning as
@@ -207,41 +216,44 @@ def get_sighting_stats(store: SightingStore = Depends(get_store)) -> SightingSta
     return store.stats()
 
 
-@router.get("/sightings/by-source/{source_type}/{upstream_id}", response_model=SightingRecord)
+@router.get("/sightings/by-source/{source_type}/{upstream_id}")
 def get_sighting_by_source(
     source_type: SightingSourceType,
     upstream_id: str,
+    request: Request,
     store: SightingStore = Depends(get_store),
-) -> SightingRecord:
+) -> dict:
     """Unauthenticated read (same posture as GET /sightings/{id}) — the dedup/correlation
     lookup an ingestion process (e.g. whale-alert-connector) calls over plain HTTP, like
     everything else it does, to decide whether a given upstream record is already known."""
     record = store.get_by_source(source_type, upstream_id)
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sighting not found")
-    return record
+    return annotate_record(record, str(request.base_url), can_delete_record(record))
 
 
-@router.get("/sightings/{sighting_id}", response_model=SightingRecord)
+@router.get("/sightings/{sighting_id}")
 def get_sighting(
     sighting_id: UUID,
+    request: Request,
     store: SightingStore = Depends(get_store),
-) -> SightingRecord:
+) -> dict:
     record = store.get(sighting_id)
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sighting not found")
-    return record
+    return annotate_record(record, str(request.base_url), can_delete_record(record))
 
 
-@router.patch("/sightings/{sighting_id}/moderation", response_model=SightingRecord)
+@router.patch("/sightings/{sighting_id}/moderation")
 def update_moderation_status(
     sighting_id: UUID,
     payload: ModerationUpdate,
+    request: Request,
     store: SightingStore = Depends(get_store),
     mqtt: MqttPublisher = Depends(get_mqtt_publisher),
     ws: WsBroadcaster = Depends(get_ws_broadcaster),
     _claims: dict = Depends(require_ingest),
-) -> SightingRecord:
+) -> dict:
     """Ingest-only. Narrow by design (see ModerationUpdate) — a sighting's moderation
     status only makes sense for a Whale-Alert-sourced record, hence the 409 below rather
     than silently accepting it for a local/peer sighting."""
@@ -258,7 +270,7 @@ def update_moderation_status(
     store.update(updated_record)
     mqtt.publish("updated", str(sighting_id))
     ws.broadcast("updated", str(sighting_id))
-    return updated_record
+    return annotate_record(updated_record, str(request.base_url), can_delete_record(updated_record))
 
 
 # Admin (browser) or ingest (machine, e.g. whale-alert-connector) — see app/auth.py. Every
@@ -274,6 +286,18 @@ def delete_sighting(
     record = store.get(sighting_id)
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sighting not found")
+
+    # Peer sightings are never deletable via this API, regardless of caller — there's no
+    # formal peer-registration/delete-authority subsystem yet (an explicit, intentional
+    # follow-on, not built now — see the plan's Part 2 context), so a peer's own data is
+    # treated as permanent for this demo rather than half-implementing an ownership model
+    # for it. Checked before the ingest/whale_alert logic below since it applies
+    # unconditionally, not based on the caller's own scopes.
+    if record.source.type == SightingSourceType.PEER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Peer-sourced sightings cannot be deleted via this API",
+        )
 
     # Each source's owner is the only one who may delete its own records — checked directly
     # against the token's own scopes (not "which dependency succeeded" — require_admin_or_
