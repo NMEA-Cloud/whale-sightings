@@ -12,6 +12,8 @@ services:
     image: valkey/valkey:8-alpine
     ports:
       - "6379:6379"
+    volumes:
+      - valkey-data:/data
     healthcheck:
       test: ["CMD", "valkey-cli", "ping"]
       interval: 2s
@@ -206,3 +208,6 @@ services:
 networks:
   whale-sightings-net:
     external: true
+
+volumes:
+  valkey-data:

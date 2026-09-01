@@ -9,10 +9,10 @@
 #   --clear-data   Also FLUSHALL the Valkey store before stopping containers — every
 #                  sighting (local, peer, and whale_alert) and the whale-alert-connector's
 #                  "retired" bookkeeping are gone for good. Omitted by default: data
-#                  persists in the Valkey volume across dev-up.sh/dev-down.sh cycles, same
-#                  as always. Reach for this when leftover data from a previous session
-#                  (e.g. whale_alert sightings from earlier connector/mock testing) is
-#                  confusing rather than useful.
+#                  persists in the valkey-data volume (docker-compose.yml) across
+#                  dev-up.sh/dev-down.sh cycles. Reach for this when leftover data from a
+#                  previous session (e.g. whale_alert sightings from earlier
+#                  connector/mock testing) is confusing rather than useful.
 set -euo pipefail
 
 CLEAR_DATA=false
