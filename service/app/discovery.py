@@ -56,7 +56,11 @@ def build_root_document(base_url: str, settings: Settings) -> dict[str, Any]:
         "name": "Whale Sightings",
         "_links": {
             "self": {"href": f"{base}/"},
-            "sightings:create": {"href": f"{base}/sightings", "method": "POST"},
+            # "scope" here is what a caller needs to create a *peer*-sourced sighting
+            # (require_peer in app/auth.py) — the endpoint itself stays open by default for
+            # the unauthenticated public report form, this just tells an authenticated
+            # caller like peer-service what to request instead of hardcoding it.
+            "sightings:create": {"href": f"{base}/sightings", "method": "POST", "scope": "peer:write"},
             "sightings:list": {"href": f"{base}/sightings", "method": "GET"},
             "sightings:poll": {"href": f"{base}/sightings/poll", "method": "GET"},
             "sightings:stats": {"href": f"{base}/sightings/stats", "method": "GET"},

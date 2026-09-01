@@ -635,7 +635,26 @@ itself rather than a client needing to know its shape in advance. On startup it 
 this service's root document (`GET /` with `Accept: application/json` — see "Data model"
 below for a hint of the shape, or just curl it) and reads `sightings:create`/
 `sightings:live-sync` straight out of `_links` — it never hardcodes `/sightings` or
-`/sightings/ws`. It then runs two things at once:
+`/sightings/ws`. Auth setup is discovered too, not just configured: it follows the root
+document's `oauth:protected-resource` link to find the audience and Hydra's issuer, then
+that issuer's own standard OIDC discovery document to find the actual token endpoint, and
+reads the scope to request straight off the `sightings:create` link itself (`scope:
+"peer:write"`) rather than hardcoding it. The one thing that stays pre-shared config,
+deliberately: `PEER_CLIENT_ID`/`PEER_CLIENT_SECRET` themselves — an unauthenticated
+discovery endpoint can't hand out valid credentials without breaking the security model.
+
+One wrinkle discovered while building this: Hydra always publishes every URL in its own
+OIDC discovery document (including `token_endpoint`) built from its configured public
+issuer address, regardless of which host was used to reach it. In the default
+docker-compose.yml topology that public address is a `dev.` LAN hostname this container's
+own DNS can't resolve to anywhere reachable (it only means something on a real LAN machine
+— see "Running it standalone" below) — so `HYDRA_INTERNAL_BASE_URL` swaps in the
+Docker-internal `hydra` hostname for the actual network calls, keeping whatever path Hydra
+chose. Same problem, same fix, as `OAUTH_JWKS_URL` in the main service's own config. Unset
+(the default, and what a standalone run should leave it as) uses the issuer's own address
+directly.
+
+It then runs two things at once:
 
 - **Generates sightings** for a simulated moving pod, walking a small fixed set of
   waypoints (`peer-service/route.py`) and posting one interpolated position every
@@ -705,8 +724,6 @@ Docker-internal names — needs no new compose file or tooling, just a different
 docker build -t peer-service ./peer-service
 docker run --rm \
   -e API_BASE=https://api.dev.wombat-sightings.org:8000 \
-  -e HYDRA_TOKEN_URL=https://auth.dev.booth-boat.org:4444/oauth2/token \
-  -e HYDRA_AUDIENCE=https://api.dev.wombat-sightings.org:8000 \
   -e PEER_CLIENT_ID=<from the registration script> \
   -e PEER_CLIENT_SECRET=<from the registration script> \
   -v /path/to/rootCA.pem:/rootCA.pem:ro \

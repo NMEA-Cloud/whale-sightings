@@ -17,6 +17,7 @@ import logging
 import ssl
 import time
 from datetime import datetime, timezone
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 import websockets
@@ -34,13 +35,17 @@ STEPS_PER_WAYPOINT = 4
 
 
 class PeerTokenClient:
-    """Mints and caches a client_credentials token from our own Hydra, scoped to
-    peer:write — same shape as the whale-alert-connector's own token caching
-    (service/app/ingest/hydra_token_client.py), kept separate here since peer-service is a
-    standalone deployable unit sharing no code with service/."""
+    """Mints and caches a client_credentials token from our own Hydra — same shape as the
+    whale-alert-connector's own token caching (service/app/ingest/hydra_token_client.py),
+    kept separate here since peer-service is a standalone deployable unit sharing no code
+    with service/. token_url/audience/scope come from discover_auth() below, not hardcoded
+    config — only the client's own credentials are pre-shared (see config.py)."""
 
-    def __init__(self, client: httpx.Client) -> None:
+    def __init__(self, client: httpx.Client, token_url: str, audience: str, scope: str) -> None:
         self._client = client
+        self._token_url = token_url
+        self._audience = audience
+        self._scope = scope
         self._token: str | None = None
         self._expires_at: float = 0.0
 
@@ -49,13 +54,13 @@ class PeerTokenClient:
             return self._token
 
         response = self._client.post(
-            config.HYDRA_TOKEN_URL,
+            self._token_url,
             data={
                 "grant_type": "client_credentials",
                 "client_id": config.PEER_CLIENT_ID,
                 "client_secret": config.PEER_CLIENT_SECRET,
-                "scope": "peer:write",
-                "audience": config.HYDRA_AUDIENCE,
+                "scope": self._scope,
+                "audience": self._audience,
             },
         )
         response.raise_for_status()
@@ -68,26 +73,71 @@ class PeerTokenClient:
 
 
 def discover(client: httpx.Client) -> dict[str, str]:
-    """Fetches the service's root discovery document and returns the two hrefs this
-    service actually needs. Never hardcodes /sightings or /sightings/ws — if the service
-    renamed either path tomorrow, only its own _links would need to change."""
+    """Fetches the service's root discovery document and returns the hrefs this service
+    actually needs, plus the scope required for sightings:create (discovery.py's
+    build_root_document annotates it directly — generic OAuth protected-resource metadata
+    only has a flat scopes_supported list, not a per-action mapping) and the
+    oauth:protected-resource href discover_auth() follows next. Never hardcodes /sightings
+    or /sightings/ws — if the service renamed either path tomorrow, only its own _links
+    would need to change."""
     response = client.get(config.API_BASE, headers={"Accept": "application/json"})
     response.raise_for_status()
     links = response.json()["_links"]
+    create_link = links["sightings:create"]
     return {
-        "create": links["sightings:create"]["href"],
+        "create": create_link["href"],
+        "create_scope": create_link["scope"],
         "live_sync": links["sightings:live-sync"]["href"],
+        "protected_resource": links["oauth:protected-resource"]["href"],
     }
 
 
+def discover_auth(client: httpx.Client, protected_resource_url: str) -> dict[str, str]:
+    """Follows the RFC 9728 protected-resource link (service/app/routers/well_known.py) to
+    find the audience and the authorization server's issuer, then that issuer's own
+    standard OIDC discovery document — Ory Hydra publishes one — to find the actual token
+    endpoint. Replaces what used to be hardcoded HYDRA_TOKEN_URL/HYDRA_AUDIENCE config; only
+    the client's own credentials remain pre-shared (see config.py).
+
+    Hydra publishes every URL in that discovery document (including token_endpoint) built
+    from its own configured public issuer address, regardless of which host was actually
+    used to reach it — confirmed by querying it directly. In the default docker-compose.yml
+    topology, that public address is a `dev.` LAN hostname this container's own DNS can't
+    reach (unlike a real second LAN machine, where it resolves for real — see the README's
+    "Running it standalone" section), so HYDRA_INTERNAL_BASE_URL lets docker-compose.yml
+    swap in the Docker-internal `hydra` hostname for the actual network calls, keeping
+    whatever path Hydra chose — the same problem, and the same fix, as
+    service/app/config.py's own OAUTH_JWKS_URL override. Unset (the default) makes every
+    call here go to the issuer's own address directly, which is correct off Docker."""
+    response = client.get(protected_resource_url)
+    response.raise_for_status()
+    resource_metadata = response.json()
+    issuer = resource_metadata["authorization_servers"][0]
+    audience = resource_metadata["resource"]
+
+    metadata_base = config.HYDRA_INTERNAL_BASE_URL or issuer
+    oidc_response = client.get(f"{metadata_base}/.well-known/openid-configuration")
+    oidc_response.raise_for_status()
+    token_endpoint = oidc_response.json()["token_endpoint"]
+
+    if config.HYDRA_INTERNAL_BASE_URL:
+        internal = urlparse(config.HYDRA_INTERNAL_BASE_URL)
+        token_endpoint = urlunparse(urlparse(token_endpoint)._replace(scheme=internal.scheme, netloc=internal.netloc))
+
+    return {"token_url": token_endpoint, "audience": audience}
+
+
 def discover_with_retry(client: httpx.Client) -> dict[str, str]:
-    """The service container may still be starting up when this one does (docker-compose's
-    depends_on only waits for the container to start, not for uvicorn to actually be
-    accepting connections) — retry indefinitely with a fixed delay rather than crash on a
+    """The service (and, transitively, Hydra) may still be starting up when this container
+    does (docker-compose's depends_on only waits for the container to start, not for
+    uvicorn/Hydra to actually be accepting connections) — retry the whole discovery ->
+    auth-discovery sequence indefinitely with a fixed delay rather than crash on a
     slow-starting dependency."""
     while True:
         try:
-            return discover(client)
+            links = discover(client)
+            auth = discover_auth(client, links["protected_resource"])
+            return {**links, **auth}
         except httpx.HTTPError as exc:
             logger.warning("Discovery failed (%s) — retrying in 3s", exc)
             time.sleep(3)
@@ -167,15 +217,20 @@ async def subscribe_live_sync(ws_url: str) -> None:
 async def main() -> None:
     verify = config.CA_BUNDLE_PATH or True
     with httpx.Client(verify=verify) as sync_client:
-        links = discover_with_retry(sync_client)
-        logger.info("Discovered links: %s", links)
+        discovered = discover_with_retry(sync_client)
+        logger.info("Discovered: %s", discovered)
 
-        token_client = PeerTokenClient(sync_client)
+        token_client = PeerTokenClient(
+            sync_client,
+            token_url=discovered["token_url"],
+            audience=discovered["audience"],
+            scope=discovered["create_scope"],
+        )
 
         async with httpx.AsyncClient(verify=verify) as async_client:
             await asyncio.gather(
-                generate_sightings(async_client, token_client, links["create"]),
-                subscribe_live_sync(links["live_sync"]),
+                generate_sightings(async_client, token_client, discovered["create"]),
+                subscribe_live_sync(discovered["live_sync"]),
             )
 
 
