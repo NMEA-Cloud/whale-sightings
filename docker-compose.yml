@@ -119,6 +119,36 @@ services:
       MOCK_CLIENT_ID: mock-client-id
       MOCK_CLIENT_SECRET: mock-client-secret
 
+  # A simulated second system, demonstrating HATEOAS discovery + JSON-LD-flavored data: it
+  # discovers this service's own capabilities from its root document instead of hardcoding
+  # endpoint paths, generates sightings for a moving pod along a fixed route, and stays
+  # subscribed to live-sync so it sees every other create/update/delete happening on the
+  # service too. Unlike whale-alert-connector, it never touches a real third-party API —
+  # only our own service and Hydra — but it's still opt-in (profiles: ["peer-service"]) so a
+  # plain `docker compose up`/`./scripts/dev-up.sh` doesn't require its Hydra client to
+  # already be registered. No FastAPI, no host port — its container logs are the demo surface.
+  peer-service:
+    build:
+      context: ./peer-service
+    profiles: ["peer-service"]
+    env_file:
+      # Gitignored — the peer:write Hydra client's own id/secret. Copy
+      # peer-service/.env.example and fill it in (see the README).
+      - peer-service/.env
+    environment:
+      API_BASE: https://service:8000
+      HYDRA_TOKEN_URL: https://hydra:4444/oauth2/token
+      HYDRA_AUDIENCE: https://api.dev.wombat-sightings.org:8000
+      CA_BUNDLE_PATH: /certs/rootCA.pem
+    volumes:
+      - ./certs:/certs:ro
+    networks:
+      default: {}
+      whale-sightings-net: {}
+    depends_on:
+      service:
+        condition: service_started
+
   # --- Static clients ---
   #
   # config.js is templated from the API_BASE/MQTT_WS_URL env vars below at container start

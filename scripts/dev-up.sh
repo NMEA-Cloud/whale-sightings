@@ -14,7 +14,7 @@
 # the shared external network the two compose projects join (one-time setup):
 #   docker network create whale-sightings-net
 #
-# Usage: ./scripts/dev-up.sh [--with-whale-alert] [--with-whale-alert-mock]
+# Usage: ./scripts/dev-up.sh [--with-whale-alert] [--with-whale-alert-mock] [--with-peer-service]
 #   --with-whale-alert        Also start whale-alert-connector (opt-in, real Whale Alert API
 #                              calls by default — see the README). Requires
 #                              service/.env.whale-alert-connector (copy
@@ -27,17 +27,24 @@
 #                              WHALE_ALERT_API_BASE_URL at it in .env.whale-alert-connector to
 #                              have the connector actually talk to it; this flag only starts
 #                              the mock container, it doesn't rewrite that env file for you.
+#   --with-peer-service       Also start peer-service, a simulated second system that only
+#                              ever talks to this repo's own service/Hydra — see the README.
+#                              Requires peer-service/.env (copy peer-service/.env.example)
+#                              and its Hydra client (scripts/register-hydra-peer-client.sh)
+#                              to already be set up. Omitted by default.
 set -euo pipefail
 
 WITH_WHALE_ALERT=false
 WITH_WHALE_ALERT_MOCK=false
+WITH_PEER_SERVICE=false
 for arg in "$@"; do
   case "$arg" in
     --with-whale-alert) WITH_WHALE_ALERT=true ;;
     --with-whale-alert-mock) WITH_WHALE_ALERT_MOCK=true ;;
+    --with-peer-service) WITH_PEER_SERVICE=true ;;
     *)
       echo "Unknown argument: $arg" >&2
-      echo "Usage: $0 [--with-whale-alert] [--with-whale-alert-mock]" >&2
+      echo "Usage: $0 [--with-whale-alert] [--with-whale-alert-mock] [--with-peer-service]" >&2
       exit 1
       ;;
   esac
@@ -89,6 +96,9 @@ fi
 if [ "$WITH_WHALE_ALERT_MOCK" = true ]; then
   PROFILE_ARGS+=(--profile whale-alert-mock)
 fi
+if [ "$WITH_PEER_SERVICE" = true ]; then
+  PROFILE_ARGS+=(--profile peer-service)
+fi
 DOCKER_UP_CMD="docker compose ${PROFILE_ARGS[*]-} up --build"
 
 tmux new-session -d -s "$SESSION" -n docker -c "$REPO_ROOT" "$DOCKER_UP_CMD"
@@ -109,6 +119,9 @@ if [ "$WITH_WHALE_ALERT" = true ]; then
 fi
 if [ "$WITH_WHALE_ALERT_MOCK" = true ]; then
   echo "whale-alert-mock is included (--with-whale-alert-mock)."
+fi
+if [ "$WITH_PEER_SERVICE" = true ]; then
+  echo "peer-service is included (--with-peer-service)."
 fi
 echo "Switch windows with Ctrl-b <number>, detach with Ctrl-b d."
 echo "Tear down with ./scripts/dev-down.sh"

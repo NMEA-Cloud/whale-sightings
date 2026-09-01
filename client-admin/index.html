@@ -10,9 +10,11 @@
   <h1>Whale Sightings (Admin)</h1>
   <p class="note">
     This is a demo/admin tool. Deleting sightings requires signing in via OAuth2 — clicking
-    "Clear all sightings" without a session redirects to a login screen first. Everything
-    else (stats, demo data) talks to the service without authentication, same as the public
-    client.
+    "Clear all sightings" without a session redirects to a login screen first. Whale Alert-
+    and peer-sourced sightings are never deleted this way, regardless of login — each
+    source owns its own data, so "Clear all" only ever touches local (publicly reported)
+    sightings. Everything else (stats, demo data) talks to the service without
+    authentication, same as the public client.
   </p>
 
   <section class="panel">

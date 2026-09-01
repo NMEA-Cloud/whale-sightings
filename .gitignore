@@ -8,10 +8,18 @@ venv/
 
 # Env files. The bare ".env" pattern alone only matches a file literally named that — it
 # does NOT match "service/.env.whale-alert-connector" (a real secrets file, not an example
-# template), which is exactly the gap ".env.*" plus the "!...example" exception closes.
+# template), which is exactly the gap ".env.*" plus the "!...example" exceptions close.
+# Two example-exception shapes are needed: "!.env.*.example" for a named variant like
+# "service/.env.whale-alert-connector.example", and "!.env.example" for the plain form
+# used elsewhere in this repo (the root and service/ own templates) — the "*" in the first
+# pattern requires a non-empty middle segment, so it doesn't also cover the second, plain
+# shape (confirmed the hard way: a freshly added "peer-service/.env.example" was silently
+# swallowed by ".env.*" until this line was added; the two pre-existing plain ones only
+# survived because they were already tracked before ".env.*" existed at all).
 .env
 .env.*
 !.env.*.example
+!.env.example
 client-mqtt/config.js
 client-long-poll/config.js
 client-admin/config.js

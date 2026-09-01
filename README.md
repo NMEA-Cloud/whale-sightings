@@ -14,12 +14,14 @@ the service is intended to eventually deploy to AWS.
 - `client-ws/` — same public client, live-updated via a direct WebSocket connection to the service (`GET /sightings/ws`) instead of MQTT or long-polling.
 - `shared/` — rendering/form/filter JS shared by `client-mqtt/`, `client-long-poll/`, and `client-ws/`, copied into each's image at build time — see "Running the clients" below.
 - `client-admin/` — vanilla HTML/CSS/JS admin client (stats + demo data loading), also runs in Docker.
+- `peer-service/` — a simulated second system demonstrating HATEOAS discovery — plain async
+  Python, no FastAPI, no shared code with `service/`. See "peer-service" below.
 - `hydra/` — config for the self-hosted Ory Hydra OAuth2 authorization server.
 - `login-consent/` — small FastAPI app serving Hydra's login/consent screens.
 - `dnsmasq/` — config for the `dns` service (see `infra/docker-compose.yml`) that resolves
   the `dev.`-subdomain hostnames below.
 - `docker-compose.yml` — the **app** project (Compose project name `wombat-sightings`): runs
-  `service`, `valkey`, `mqtt`, and all four static clients, plus two opt-in,
+  `service`, `valkey`, `mqtt`, all four static clients, and `peer-service`, plus two opt-in,
   profile-gated services — `whale-alert-connector` and `whale-alert-mock` (see "Whale Alert
   connector" below).
 - `infra/docker-compose.yml` — the **infra** project (Compose project name `booth-boat`): runs
@@ -626,6 +628,99 @@ colored dot instead of a default pin, keyed by `source.type`: blue for `local`, 
 stats panel shows a Local/Peer/Whale Alert breakdown alongside the existing count/oldest/
 newest.
 
+## peer-service
+
+`peer-service` is a simulated second system, built to demonstrate this API describing
+itself rather than a client needing to know its shape in advance. On startup it fetches
+this service's root document (`GET /` with `Accept: application/json` — see "Data model"
+below for a hint of the shape, or just curl it) and reads `sightings:create`/
+`sightings:live-sync` straight out of `_links` — it never hardcodes `/sightings` or
+`/sightings/ws`. It then runs two things at once:
+
+- **Generates sightings** for a simulated moving pod, walking a small fixed set of
+  waypoints (`peer-service/route.py`) and posting one interpolated position every
+  `GENERATE_INTERVAL_SECONDS`. No `source` field in the payload — the service derives
+  `source.type: "peer"` and `source.peer_id` purely from the bearer token's own claims (see
+  "Whale Alert connector" above for the same anti-spoofing pattern), so peer-service can't
+  self-declare an identity any more than the Whale Alert connector can.
+- **Subscribes to live-sync** (the same WebSocket `client-ws` uses) and logs every
+  `created`/`updated`/`deleted` event it receives — including its own posted sightings,
+  since the broadcaster doesn't exclude the connection that caused the event. Reconnects on
+  a dropped connection with a fixed delay, mirroring `client-ws/app.js`'s own hand-rolled
+  reconnect exactly.
+
+No FastAPI, no host port — its container logs are the demo surface
+(`docker compose logs -f peer-service`). It's opt-in, like `whale-alert-connector` and
+`whale-alert-mock` (`profiles: ["peer-service"]`) — a plain `docker compose up`/
+`./scripts/dev-up.sh` skips it, so its Hydra client doesn't need to already be registered
+just to bring up the rest of the stack.
+
+### One-time setup
+
+Register its Hydra client (`client_credentials`, `peer:write` scope — the same shape as the
+Whale Alert connector's ingest client, just a different scope):
+
+```bash
+./scripts/register-hydra-peer-client.sh
+```
+
+Safe to re-run (deletes and re-creates the client, printing a fresh secret each time). Then
+copy the printed client ID/secret into `peer-service/.env`:
+
+```bash
+cp peer-service/.env.example peer-service/.env
+```
+
+This file is gitignored — only `.env.example` is committed. These credentials only ever
+authenticate to this repo's own service and Hydra, never a third party.
+
+### Running it
+
+```bash
+docker compose --profile peer-service up --build
+```
+
+or as part of the full dev stack:
+
+```bash
+./scripts/dev-up.sh --with-peer-service
+```
+
+Either way, watch its logs for a discovery fetch, periodic "Posted sighting" lines, and a
+"Connected to live-sync" line (`docker compose logs -f peer-service`); its sightings should
+appear as amber dots in any map client (see "Source-aware map pins" above), and
+`client-admin`'s stats panel should show a non-zero Peer count. `client-admin`'s "Clear all
+sightings" leaves peer sightings in place, same as Whale Alert ones — there's no formal
+peer-registration/delete-authority subsystem yet (an intentional follow-on), so peer data is
+treated as permanent for this demo
+regardless of who's asking.
+
+### Running it standalone, on a second machine
+
+Since all of its config is env-var driven (`peer-service/config.py`), running it on a
+second LAN machine — pointed at the first machine's real `dev.` hostnames instead of
+Docker-internal names — needs no new compose file or tooling, just a different invocation:
+
+```bash
+docker build -t peer-service ./peer-service
+docker run --rm \
+  -e API_BASE=https://api.dev.wombat-sightings.org:8000 \
+  -e HYDRA_TOKEN_URL=https://auth.dev.booth-boat.org:4444/oauth2/token \
+  -e HYDRA_AUDIENCE=https://api.dev.wombat-sightings.org:8000 \
+  -e PEER_CLIENT_ID=<from the registration script> \
+  -e PEER_CLIENT_SECRET=<from the registration script> \
+  -v /path/to/rootCA.pem:/rootCA.pem:ro \
+  -e CA_BUNDLE_PATH=/rootCA.pem \
+  peer-service
+```
+
+Three manual prerequisites on that second machine, same as any remote client (see "TLS for
+remote clients" and "Infra project" above): its resolver needs to reach the `dev.` hostnames
+(either point it at the `dns` service or add host-file entries), it needs to trust the
+step-ca root (`rootCA.pem`, copied out of band — never anything from the `step-ca-data`
+Docker volume), and it needs the Hydra client ID/secret copied out of band too (never
+committed, same as the local `.env` file).
+
 ## Running the service outside Docker (for development)
 
 Needs Python 3.10+ (see [Prerequisites](#prerequisites)) — use `python3.10`/`python3.12`/etc.
@@ -749,7 +844,14 @@ This project is being built in stages:
     (see its docs above); Whale Alert's own polling is a fixed 14-day re-scan every cycle
     rather than an incremental cursor, since its API has no "last modified" field to cursor
     from.
-11. A simulated peer-service demo, showing JSON-LD + HATEOAS discovery: a second container
-    generating moving-whale sightings, discovering this service's capabilities from a root
-    document instead of hardcoding endpoints, authenticating via Hydra client-credentials,
-    and subscribing to live-sync — not yet built.
+11. **Done**: a simulated peer-service demo (`peer-service/`), showing JSON-LD + HATEOAS
+    discovery — a second container generating moving-pod sightings, discovering this
+    service's capabilities from its root document instead of hardcoding endpoints,
+    authenticating via Hydra client-credentials, and subscribing to live-sync. Along the
+    way, the root document's and every sighting's own `_links`/`@id` were switched from a
+    fixed `public_api_base_url` setting to the actual incoming request's own base URL — a
+    same-host peer container reaching the service via its Docker-internal name got back
+    links built for the browser-facing hostname instead, which it can't resolve. A formal
+    peer-registration/webhook-push subsystem, and real delete authority over a peer's own
+    data, remain intentional follow-ons — peer sightings are permanent (undeletable via this
+    API) for this demo.
