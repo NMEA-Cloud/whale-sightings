@@ -66,12 +66,66 @@ function togglePickTarget(target) {
   updatePickButtons();
 }
 
+// NOAA Chart Display Service (NCDS) — renders NOAA ENC vector chart data with traditional
+// nautical chart symbology, rendered on demand per view rather than served from pre-cached
+// tiles. Two things ruled out the more standard approaches, both confirmed live rather than
+// assumed:
+// - NOAA also publishes this as a WMTS with a Web-Mercator XYZ tile pyramid (which would've
+//   meant a plain L.tileLayer swap here), but its cache turns out to only be populated
+//   through zoom 7 — every request past that returns a 400 regardless of coordinates,
+//   despite GetCapabilities advertising up to 18. Zoom 7 covers a whole metro area at once,
+//   nowhere near close enough for individual sightings.
+// - Esri-Leaflet's dynamicMapLayer plugin (the usual way to consume an ArcGIS Server "export"
+//   endpoint like this one from Leaflet) requests f=json expecting back a small JSON
+//   descriptor with a hosted image URL, then fetches that — the normal two-step ArcGIS Server
+//   protocol. This particular server doesn't follow it: it returns the raw image bytes
+//   directly no matter what f is set to, so Esri-Leaflet's JSON parse of that response
+//   fails and no image ever appears.
+// So this is a small hand-rolled image overlay instead of a tile layer or a third-party
+// plugin: on every view change, request the current viewport as one f=image export (the
+// param NOAA's server does honor, confirmed live) and show it as a plain image overlay
+// behind the sighting markers. Free/public/no API key. U.S. coastal waters only — outside
+// that (which includes anywhere off the Puget Sound demo data), the image comes back blank.
+const NOAA_CHART_EXPORT_URL =
+  "https://gis.charttools.noaa.gov/arcgis/rest/services/MCS/NOAAChartDisplay/MapServer/exts/MaritimeChartService/MapServer/export";
+
 function initMap() {
   map = L.map("map").setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  }).addTo(map);
+
+  let chartOverlay = null;
+  function updateChartOverlay() {
+    const bounds = map.getBounds();
+    const size = map.getSize();
+    const sw = L.CRS.EPSG3857.project(bounds.getSouthWest());
+    const ne = L.CRS.EPSG3857.project(bounds.getNorthEast());
+    const params = new URLSearchParams({
+      bbox: `${sw.x},${sw.y},${ne.x},${ne.y}`,
+      bboxSR: "3857",
+      imageSR: "3857",
+      size: `${size.x},${size.y}`,
+      dpi: "96",
+      format: "png32",
+      transparent: "true",
+      f: "image",
+    });
+    const previousOverlay = chartOverlay;
+    chartOverlay = L.imageOverlay(`${NOAA_CHART_EXPORT_URL}?${params.toString()}`, bounds, {
+      attribution: "NOAA Office of Coast Survey",
+    }).addTo(map);
+    chartOverlay.bringToBack();
+    // Wait for the new export to actually load before dropping the old one, so panning/
+    // zooming doesn't flash an empty gap while the new request is in flight. onError also
+    // removes it (rather than leaving a blank hole forever) — e.g. panning outside NOAA's
+    // U.S.-coastal-waters coverage.
+    chartOverlay.once("load error", () => {
+      if (previousOverlay) {
+        map.removeLayer(previousOverlay);
+      }
+    });
+  }
+  updateChartOverlay();
+  map.on("moveend", updateChartOverlay);
+
   markersLayer = L.layerGroup().addTo(map);
 
   map.on("click", (event) => {
