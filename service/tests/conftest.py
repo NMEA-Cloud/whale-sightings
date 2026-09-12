@@ -3,9 +3,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.auth import require_admin, require_admin_or_ingest
-from app.deps import get_mqtt_publisher, get_store, get_ws_broadcaster
+from app.deps import get_mqtt_publisher, get_sse_broadcaster, get_store, get_ws_broadcaster
 from app.main import create_app
 from app.mqtt import MqttPublisher
+from app.sse import SseBroadcaster
 from app.store.valkey_store import ValkeySightingStore
 from app.ws import WsBroadcaster
 
@@ -22,6 +23,16 @@ class FakeMqttPublisher(MqttPublisher):
 
 class FakeWsBroadcaster(WsBroadcaster):
     """Records broadcast() calls instead of pushing to real WebSocket connections."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    def broadcast(self, event, sighting_id: str) -> None:
+        self.calls.append((event, sighting_id))
+
+
+class FakeSseBroadcaster(SseBroadcaster):
+    """Records broadcast() calls instead of pushing to real SSE connections."""
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
@@ -51,11 +62,17 @@ def ws_broadcaster():
 
 
 @pytest.fixture
-def client(store, mqtt_publisher, ws_broadcaster):
+def sse_broadcaster():
+    return FakeSseBroadcaster()
+
+
+@pytest.fixture
+def client(store, mqtt_publisher, ws_broadcaster, sse_broadcaster):
     app = create_app()
     app.dependency_overrides[get_store] = lambda: store
     app.dependency_overrides[get_mqtt_publisher] = lambda: mqtt_publisher
     app.dependency_overrides[get_ws_broadcaster] = lambda: ws_broadcaster
+    app.dependency_overrides[get_sse_broadcaster] = lambda: sse_broadcaster
     # Auth is exercised on its own in test_auth.py — every other test in this suite predates
     # auth and shouldn't need a real token just to call DELETE. delete_sighting depends on
     # require_admin_or_ingest (not require_admin directly) — it calls require_admin() as a

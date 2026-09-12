@@ -1,6 +1,7 @@
 from fastapi import Request, WebSocket
 
 from app.mqtt import MqttPublisher
+from app.sse import SseBroadcaster
 from app.store.base import SightingStore
 from app.ws import WsBroadcaster
 
@@ -11,6 +12,10 @@ def get_store(request: Request) -> SightingStore:
 
 def get_mqtt_publisher(request: Request) -> MqttPublisher:
     return request.app.state.mqtt_publisher
+
+
+def get_sse_broadcaster(request: Request) -> SseBroadcaster:
+    return request.app.state.sse_broadcaster
 
 
 def get_ws_broadcaster(request: Request) -> WsBroadcaster:

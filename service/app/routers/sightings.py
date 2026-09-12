@@ -4,10 +4,11 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect, status
+from fastapi.responses import StreamingResponse
 
 from app.auth import require_admin_or_ingest, require_ingest, token_scopes, try_require_ingest, try_require_peer
 from app.config import get_settings
-from app.deps import get_mqtt_publisher, get_store, get_ws_broadcaster, get_ws_broadcaster_ws
+from app.deps import get_mqtt_publisher, get_sse_broadcaster, get_store, get_ws_broadcaster, get_ws_broadcaster_ws
 from app.discovery import annotate_record, can_delete_record
 from app.models import (
     ModerationUpdate,
@@ -18,6 +19,7 @@ from app.models import (
     SightingStats,
 )
 from app.mqtt import MqttPublisher
+from app.sse import SseBroadcaster
 from app.store.base import SightingStore
 from app.ws import WsBroadcaster, origin_allowed
 
@@ -53,6 +55,7 @@ def create_sighting(
     store: SightingStore = Depends(get_store),
     mqtt: MqttPublisher = Depends(get_mqtt_publisher),
     ws: WsBroadcaster = Depends(get_ws_broadcaster),
+    sse: SseBroadcaster = Depends(get_sse_broadcaster),
     ingest_claims: dict | None = Depends(try_require_ingest),
     peer_claims: dict | None = Depends(try_require_peer),
 ) -> dict:
@@ -73,10 +76,11 @@ def create_sighting(
     record = store.create(payload, source=source, moderation_status=moderation_status)
     mqtt.publish("created", str(record.id))
     ws.broadcast("created", str(record.id))
+    sse.broadcast("created", str(record.id))
     return annotate_record(record, str(request.base_url), can_delete_record(record))
 
 
-@router.get("/sightings")
+@router.get("/sightings", response_model=list[dict])
 def list_sightings(
     request: Request,
     since_hours: float | None = Query(default=None, gt=0, description="Only return sightings from the last N hours"),
@@ -84,7 +88,20 @@ def list_sightings(
     lon: float | None = Query(default=None, ge=-180, le=180, description="Longitude of the search center"),
     radius_nm: float | None = Query(default=None, gt=0, description="Search radius in nautical miles"),
     store: SightingStore = Depends(get_store),
-) -> list[dict]:
+    sse: SseBroadcaster = Depends(get_sse_broadcaster),
+) -> list[dict] | StreamingResponse:
+    # Content negotiation: Accept: text/event-stream switches this same endpoint from a JSON
+    # snapshot to a live push stream, instead of a separate URL. Checked first and ignores
+    # since_hours/lat/lon/radius_nm entirely — like /sightings/ws and the MQTT publish, this
+    # is an unfiltered "something changed" signal, not a filtered feed; the client decides
+    # what to do, typically refetching its own filtered view via a normal GET.
+    if "text/event-stream" in request.headers.get("accept", ""):
+        return StreamingResponse(
+            sse.event_stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache"},
+        )
+
     location_filter = _location_filter_or_none(lat, lon, radius_nm)
 
     if location_filter is not None:
@@ -252,6 +269,7 @@ def update_moderation_status(
     store: SightingStore = Depends(get_store),
     mqtt: MqttPublisher = Depends(get_mqtt_publisher),
     ws: WsBroadcaster = Depends(get_ws_broadcaster),
+    sse: SseBroadcaster = Depends(get_sse_broadcaster),
     _claims: dict = Depends(require_ingest),
 ) -> dict:
     """Ingest-only. Narrow by design (see ModerationUpdate) — a sighting's moderation
@@ -270,6 +288,7 @@ def update_moderation_status(
     store.update(updated_record)
     mqtt.publish("updated", str(sighting_id))
     ws.broadcast("updated", str(sighting_id))
+    sse.broadcast("updated", str(sighting_id))
     return annotate_record(updated_record, str(request.base_url), can_delete_record(updated_record))
 
 
@@ -281,6 +300,7 @@ def delete_sighting(
     store: SightingStore = Depends(get_store),
     mqtt: MqttPublisher = Depends(get_mqtt_publisher),
     ws: WsBroadcaster = Depends(get_ws_broadcaster),
+    sse: SseBroadcaster = Depends(get_sse_broadcaster),
     claims: dict = Depends(require_admin_or_ingest),
 ) -> None:
     record = store.get(sighting_id)
@@ -326,3 +346,4 @@ def delete_sighting(
     store.delete(sighting_id)
     mqtt.publish("deleted", str(sighting_id))
     ws.broadcast("deleted", str(sighting_id))
+    sse.broadcast("deleted", str(sighting_id))
