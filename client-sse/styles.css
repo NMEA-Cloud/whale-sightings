@@ -1,0 +1,174 @@
+body {
+  font-family: system-ui, sans-serif;
+  max-width: 1300px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+  color: #1a1a1a;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 440px);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.column-map {
+  position: sticky;
+  top: 1.5rem;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .column-map {
+    position: static;
+  }
+}
+
+.panel {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 1rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.25rem;
+}
+
+label {
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+
+input, select, textarea {
+  padding: 0.4rem;
+  font-size: 1rem;
+}
+
+button {
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+  cursor: pointer;
+  width: fit-content;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+th, td {
+  border-bottom: 1px solid #eee;
+  padding: 0.4rem;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.sighting-row td {
+  border-bottom: none;
+  padding-bottom: 0.1rem;
+}
+
+.sighting-id-row td {
+  padding-top: 0;
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: #666;
+}
+
+.status {
+  min-height: 1.2rem;
+  font-size: 0.9rem;
+}
+
+.status.error {
+  color: #b00020;
+}
+
+.status.success {
+  color: #0a7d2c;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.filter-row label {
+  margin-top: 0;
+}
+
+.filter-row input {
+  width: 6rem;
+}
+
+#lookup-id {
+  width: 22rem;
+  font-family: monospace;
+}
+
+.lookup-details {
+  margin-top: 0.75rem;
+}
+
+.lookup-details summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lookup-result {
+  background: #f7f7f7;
+  border-radius: 4px;
+  padding: 0.75rem;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.note {
+  font-size: 0.85rem;
+  color: #666;
+  font-style: italic;
+}
+
+.map {
+  height: calc(100vh - 4rem);
+  width: 100%;
+  border-radius: 8px;
+}
+
+@media (max-width: 900px) {
+  .map {
+    height: 400px;
+  }
+}
+
+.map.picking {
+  cursor: crosshair;
+}
+
+button.active {
+  background: #1a1a1a;
+  color: #fff;
+}
+
+.delete-button {
+  margin-top: 0;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.85rem;
+  color: #b00020;
+  background: none;
+  border: 1px solid #b00020;
+  border-radius: 4px;
+}
