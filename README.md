@@ -1,6 +1,6 @@
 # Whale Sightings
 
-A whale-sighting tracking system: a FastAPI service backed by Valkey, paired with three
+A whale-sighting tracking system: a FastAPI service backed by Valkey, paired with five
 static web clients — all running in Docker. Everything runs locally for development today;
 the service is intended to eventually deploy to AWS.
 
@@ -12,7 +12,8 @@ the service is intended to eventually deploy to AWS.
 - `client-mqtt/` — vanilla HTML/CSS/JS public client, live-updated via MQTT over WebSockets, runs in Docker.
 - `client-long-poll/` — same public client, live-updated via `GET /sightings/poll` long-polling instead of MQTT.
 - `client-ws/` — same public client, live-updated via a direct WebSocket connection to the service (`GET /sightings/ws`) instead of MQTT or long-polling.
-- `shared/` — rendering/form/filter JS shared by `client-mqtt/`, `client-long-poll/`, and `client-ws/`, copied into each's image at build time — see "Running the clients" below.
+- `client-sse/` — same public client, live-updated via Server-Sent Events on the existing `GET /sightings` endpoint (`Accept: text/event-stream`) instead of MQTT, long-polling, or a dedicated WebSocket.
+- `shared/` — rendering/form/filter JS shared by `client-mqtt/`, `client-long-poll/`, `client-ws/`, and `client-sse/`, copied into each's image at build time — see "Running the clients" below.
 - `client-admin/` — vanilla HTML/CSS/JS admin client (stats + demo data loading), also runs in Docker.
 - `peer-service/` — a simulated second system demonstrating HATEOAS discovery — plain async
   Python, no FastAPI, no shared code with `service/`. See "peer-service" below.
@@ -21,7 +22,7 @@ the service is intended to eventually deploy to AWS.
 - `dnsmasq/` — config for the `dns` service (see `infra/docker-compose.yml`) that resolves
   the `dev.`-subdomain hostnames below.
 - `docker-compose.yml` — the **app** project (Compose project name `wombat-sightings`): runs
-  `service`, `valkey`, `mqtt`, all four static clients, and `peer-service`, plus two opt-in,
+  `service`, `valkey`, `mqtt`, all five static clients, and `peer-service`, plus two opt-in,
   profile-gated services — `whale-alert-connector` and `whale-alert-mock` (see "Whale Alert
   connector" below).
 - `infra/docker-compose.yml` — the **infra** project (Compose project name `booth-boat`): runs
@@ -43,6 +44,7 @@ the service is intended to eventually deploy to AWS.
 | 8081 | `client-mqtt` | localhost | app | HTTP |
 | 8082 | `client-long-poll` | localhost | app | HTTP |
 | 8083 | `client-ws` | localhost | app | HTTP |
+| 8084 | `client-sse` | localhost | app | HTTP |
 | 9100 | `whale-alert-mock` | localhost | app | HTTP, opt-in (`whale-alert-mock` profile — see "Whale Alert connector") |
 | 9000 | `step-ca` | localhost | infra | HTTPS (CA API) |
 | 53 | `dns` | localhost | infra | DNS, tcp + udp |
@@ -191,7 +193,7 @@ how you're running the service:
 Either way, add the remote client's actual origin (scheme + host + port it's served from),
 e.g. `http://192.168.1.23:8080` or, using a resolvable hostname as set up above,
 `http://whale-service.local:8080`, as an extra comma-separated entry alongside the existing
-`http://localhost:8080,http://localhost:8081,http://localhost:8082,http://localhost:8083`. If you're running the
+`http://localhost:8080,http://localhost:8081,http://localhost:8082,http://localhost:8083,http://localhost:8084`. If you're running the
 service via Docker, remember it needs a rebuild (`docker compose up --build`) to pick up
 the change, same as any other edit to `docker-compose.yml`.
 
@@ -210,7 +212,7 @@ machine's IP, set `CORS_ORIGIN_REGEX` instead (or in addition) — it's matched 
 `Origin` header alongside `CORS_ORIGINS`, e.g.:
 
 ```
-CORS_ORIGIN_REGEX=^http://192\.168\.0\.\d{1,3}:(8080|8081|8082|8083)$
+CORS_ORIGIN_REGEX=^http://192\.168\.0\.\d{1,3}:(8080|8081|8082|8083|8084)$
 ```
 
 ## Running the service
@@ -345,14 +347,14 @@ curl https://localhost:8000/sightings/stats
 
 ## Running the clients
 
-All four static clients (`client-mqtt/`, `client-long-poll/`, `client-ws/`, `client-admin/`)
-build and run as part of `docker-compose.yml` — `docker compose up --build` (or
-`./scripts/dev-up.sh`) brings them up along with everything else, no separate
-static-file-server steps needed. `client-mqtt`/`client-long-poll`/`client-ws` also get
-`shared/sightings-shared.js` — the rendering/form/filter code common to all three — copied
-into their image at build time (see their Dockerfiles), so only each client's own live-sync
-mechanism (MQTT, long-polling, or a direct WebSocket) needs reading to see what's different
-between them.
+All five static clients (`client-mqtt/`, `client-long-poll/`, `client-ws/`, `client-sse/`,
+`client-admin/`) build and run as part of `docker-compose.yml` — `docker compose up --build`
+(or `./scripts/dev-up.sh`) brings them up along with everything else, no separate
+static-file-server steps needed. `client-mqtt`/`client-long-poll`/`client-ws`/`client-sse`
+also get `shared/sightings-shared.js` — the rendering/form/filter code common to all four —
+copied into their image at build time (see their Dockerfiles), so only each client's own
+live-sync mechanism (MQTT, long-polling, a direct WebSocket, or Server-Sent Events) needs
+reading to see what's different between them.
 
 Each client's `config.js` is templated from environment variables (`API_BASE` and, for
 `client-mqtt`/`client-ws`, `MQTT_WS_URL`/`WS_URL`) at container start (see e.g.
@@ -360,12 +362,13 @@ Each client's `config.js` is templated from environment variables (`API_BASE` an
 client at a service running elsewhere, edit the relevant service's `environment:` block in
 `docker-compose.yml` (or an override file, same pattern `docker-compose.override.yml` already
 uses for `CORS_ORIGINS`) and restart; no rebuild needed, since the same image just gets
-different environment.
+different environment. `client-sse` (like `client-long-poll`) needs only `API_BASE` — it
+reuses `GET /sightings` itself, so there's no second URL to template in.
 
 (For quick edits without rebuilding, any client can still be run directly —
 `cd client-mqtt && python3 -m http.server 8081`, etc. `client-mqtt`/`client-long-poll`/
-`client-ws` need `shared/sightings-shared.js` copied alongside `index.html` first, since that
-normally happens at Docker build time; without a `config.js` created by hand from
+`client-ws`/`client-sse` need `shared/sightings-shared.js` copied alongside `index.html` first,
+since that normally happens at Docker build time; without a `config.js` created by hand from
 `config.example.js`, `app.js` falls back to its hardcoded `localhost` defaults.)
 
 ### The MQTT client
@@ -421,14 +424,31 @@ library the MQTT client uses) doesn't reconnect on its own after a dropped conne
 but the client owns its own reconnect logic) is the point of this client existing alongside
 the MQTT one.
 
-### Try the live sync, across all three clients
+### The SSE client
+
+A fourth live-sync mechanism: Server-Sent Events on the *same* `GET /sightings` endpoint
+every client already calls for its snapshot — sending `Accept: text/event-stream` (which the
+browser's `EventSource` API does automatically) switches it to a live push stream instead of
+a new URL (see `service/app/routers/sightings.py`'s `list_sightings` and `app/sse.py`'s
+`ConnectionSseBroadcaster`). No broker, and no dedicated WebSocket upgrade either.
+
+Open http://localhost:8084. In DevTools' Network tab, the connection shows as a single
+long-lived request of type `eventsource` to `/sightings` — the same URL every other client
+hits for its snapshot, distinguishable only by its `Accept` header and response
+`Content-Type`. Both `created` and `deleted` events (and `updated`) push immediately, same as
+the other three. One real difference worth noting in the code: unlike `client-ws/app.js`'s
+hand-rolled `connectWs()`, `EventSource` reconnects on its own (with the browser's built-in
+backoff) after a dropped connection — `client-sse/app.js` has no reconnect logic to write at
+all, the flip side of the WebSocket client's own tradeoff.
+
+### Try the live sync, across all four clients
 
 Open the MQTT client (`http://localhost:8081`), the long-poll client
-(`http://localhost:8082`), and the WebSocket client (`http://localhost:8083`) side by side.
-Submit a sighting in any one — it appears in all three, via three completely different
-mechanisms. Deleting works the same way in all three now too. This is the whole point of
-having all three: same API, same UI, three different ways a client can find out something
-changed.
+(`http://localhost:8082`), the WebSocket client (`http://localhost:8083`), and the SSE client
+(`http://localhost:8084`) side by side. Submit a sighting in any one — it appears in all four,
+via four completely different mechanisms. Deleting works the same way in all four now too.
+This is the whole point of having all four: same API, same UI, four different ways a client
+can find out something changed.
 
 ### The admin client
 
@@ -622,7 +642,7 @@ cycle once it's gone.
 
 ### Source-aware map pins
 
-Every sighting's marker on `client-mqtt`/`client-long-poll`/`client-ws`'s map is now a small
+Every sighting's marker on `client-mqtt`/`client-long-poll`/`client-ws`/`client-sse`'s map is now a small
 colored dot instead of a default pin, keyed by `source.type`: blue for `local`, amber for
 `peer`, teal for `whale_alert` — and each popup gains a `Source: ...` line. `client-admin`'s
 stats panel shows a Local/Peer/Whale Alert breakdown alongside the existing count/oldest/
@@ -872,3 +892,12 @@ This project is being built in stages:
     peer-registration/webhook-push subsystem, and real delete authority over a peer's own
     data, remain intentional follow-ons — peer sightings are permanent (undeletable via this
     API) for this demo.
+12. **Done**: a fourth public client (`client-sse/`) demonstrating Server-Sent Events via
+    content negotiation on the existing `GET /sightings` endpoint (`Accept:
+    text/event-stream`) as a fourth live-sync mechanism alongside `client-mqtt/`'s
+    broker-mediated push, `client-long-poll/`'s pull-based polling, and `client-ws/`'s direct
+    WebSocket push — no broker, no dedicated upgrade handshake, and (unlike `client-ws/app.js`)
+    no hand-rolled reconnect logic, since `EventSource` reconnects on its own. Reuses the
+    exact same `{event, sighting: <link>}` payload already published to MQTT/WS, per
+    conversation with a collaborator who prefers lightweight notifications over embedding full
+    records. Reflects creates, updates, and deletes live, same as the other three.
