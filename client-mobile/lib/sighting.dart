@@ -4,7 +4,8 @@
 // Every existing client (client-mqtt/, client-long-poll/, client-ws/, client-sse/) hardcodes
 // this same fake observer identity, since there's no login in v1 — matched here for
 // consistency across all clients.
-const String observerIdPlaceholder = "https://example.org/users/anonymous-observer";
+const String observerIdPlaceholder =
+    "https://example.org/users/anonymous-observer";
 
 /// The report form's fields, plus what a list row needs to render. Flat fields here — the
 /// nested GeoJSON location.geometry.coordinates/properties.datetime wire shape is only
@@ -33,11 +34,14 @@ class Sighting {
   });
 
   factory Sighting.fromJson(Map<String, dynamic> json) {
-    final coordinates = json["location"]["geometry"]["coordinates"] as List<dynamic>;
+    final coordinates =
+        json["location"]["geometry"]["coordinates"] as List<dynamic>;
     return Sighting(
       longitude: (coordinates[0] as num).toDouble(),
       latitude: (coordinates[1] as num).toDouble(),
-      datetime: DateTime.parse(json["location"]["geometry"]["properties"]["datetime"] as String),
+      datetime: DateTime.parse(
+        json["location"]["geometry"]["properties"]["datetime"] as String,
+      ),
       status: json["status"] as String,
       type: json["type"] as String,
       species: json["species"] as String,
@@ -78,7 +82,11 @@ class SightingRecord {
   final DateTime createdAt;
   final Sighting sighting;
 
-  SightingRecord({required this.id, required this.createdAt, required this.sighting});
+  SightingRecord({
+    required this.id,
+    required this.createdAt,
+    required this.sighting,
+  });
 
   factory SightingRecord.fromJson(Map<String, dynamic> json) {
     return SightingRecord(

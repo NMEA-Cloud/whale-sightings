@@ -3,12 +3,9 @@ import "package:flutter_map/flutter_map.dart";
 import "package:latlong2/latlong.dart";
 
 import "api_client.dart";
+import "map_config.dart";
 import "report_screen.dart";
 import "sighting.dart";
-
-// Matches the web clients' DEFAULT_MAP_CENTER/DEFAULT_MAP_ZOOM (shared/sightings-shared.js).
-const LatLng _defaultMapCenter = LatLng(47.7262, -122.645);
-const double _defaultMapZoom = 9;
 
 class ListScreen extends StatefulWidget {
   const ListScreen({super.key});
@@ -56,7 +53,9 @@ class _ListScreenState extends State<ListScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Whale Sightings"),
-        actions: [IconButton(icon: const Icon(Icons.add), onPressed: _openReportScreen)],
+        actions: [
+          IconButton(icon: const Icon(Icons.add), onPressed: _openReportScreen),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: _loadSightings,
@@ -65,18 +64,24 @@ class _ListScreenState extends State<ListScreen> {
             SizedBox(
               height: 240,
               child: FlutterMap(
-                options: const MapOptions(initialCenter: _defaultMapCenter, initialZoom: _defaultMapZoom),
+                options: const MapOptions(
+                  initialCenter: defaultMapCenter,
+                  initialZoom: defaultMapZoom,
+                ),
                 children: [
-                  TileLayer(
-                    urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-                    userAgentPackageName: "org.whalesightings.client_mobile",
-                  ),
+                  basemapTileLayer(),
                   MarkerLayer(
                     markers: _sightings
                         .map(
                           (record) => Marker(
-                            point: LatLng(record.sighting.latitude, record.sighting.longitude),
-                            child: const Icon(Icons.location_on, color: Colors.red),
+                            point: LatLng(
+                              record.sighting.latitude,
+                              record.sighting.longitude,
+                            ),
+                            child: const Icon(
+                              Icons.location_on,
+                              color: Colors.red,
+                            ),
                           ),
                         )
                         .toList(),
@@ -87,7 +92,10 @@ class _ListScreenState extends State<ListScreen> {
             if (_errorMessage != null)
               Padding(
                 padding: const EdgeInsets.all(8),
-                child: Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
+                child: Text(
+                  _errorMessage!,
+                  style: const TextStyle(color: Colors.red),
+                ),
               ),
             Expanded(
               child: ListView.builder(
@@ -96,7 +104,9 @@ class _ListScreenState extends State<ListScreen> {
                   final record = _sightings[index];
                   final sighting = record.sighting;
                   return ListTile(
-                    title: Text("${sighting.species}${sighting.name != null ? ' (${sighting.name})' : ''}"),
+                    title: Text(
+                      "${sighting.species}${sighting.name != null ? ' (${sighting.name})' : ''}",
+                    ),
                     subtitle: Text(
                       "${sighting.datetime} · ${sighting.status} · ${sighting.method}\n"
                       "${sighting.latitude.toStringAsFixed(4)}, ${sighting.longitude.toStringAsFixed(4)}"
