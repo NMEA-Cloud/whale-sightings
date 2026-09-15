@@ -5,9 +5,9 @@ the repo's static web clients (`client-mqtt/`, `client-long-poll/`, `client-ws/`
 `client-sse/`, `client-admin/`). Unlike those, it isn't built or served via Docker — it's a
 normal Flutter app you run directly with `flutter run`/Xcode.
 
-**v1 scope (current):** report a sighting + view the list, with pull-to-refresh only. No
-login, no delete, no live-sync (WebSocket/MQTT/SSE/polling) — those match the public web
-clients' own no-login posture and are deferred to later branches. Target is the **iOS
+**v1 scope (current):** report a sighting, view the list (with pull-to-refresh and automatic
+live-sync via Server-Sent Events — see "Live-sync" below), and delete a sighting after OAuth2
+PKCE login (see the root README's "OAuth2 login for the admin client"). Target is the **iOS
 Simulator only** for now; physical-device support needs a LAN-reachable TLS cert (see the
 root README's "TLS for remote clients" section) and hasn't been set up for this client yet.
 
@@ -55,3 +55,10 @@ Mac's real location. To simulate a specific spot instead:
 ```
 xcrun simctl location booted set <lat>,<lon>
 ```
+
+## Live-sync
+
+The list screen live-updates via Server-Sent Events on the existing `GET /sightings`
+endpoint (`Accept: text/event-stream`), the same mechanism `client-sse/` uses — see
+`lib/sse_client.dart`. No setup beyond the steps above; it rides the same
+`https://localhost:8000` connection and TLS trust as every other request this app makes.
