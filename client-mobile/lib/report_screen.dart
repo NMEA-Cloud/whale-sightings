@@ -4,15 +4,11 @@ import "package:geolocator/geolocator.dart";
 import "package:latlong2/latlong.dart";
 
 import "api_client.dart";
+import "map_config.dart";
 import "sighting.dart";
 
 const List<String> _statusOptions = ["alive", "dead", "distressed", "unknown"];
 const List<String> _methodOptions = ["manual-report", "other"];
-
-// Matches list_screen.dart's default map center/zoom — used here only as a fallback for
-// the picker map before geolocation resolves (or if it fails).
-const LatLng _fallbackMapCenter = LatLng(47.7262, -122.645);
-const double _fallbackMapZoom = 9;
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -72,12 +68,14 @@ class _ReportScreenState extends State<ReportScreen> {
         throw Exception("Location services disabled");
       }
       final position = await Geolocator.getCurrentPosition();
+      if (!mounted) return;
       setState(() {
         _latitudeController.text = position.latitude.toString();
         _longitudeController.text = position.longitude.toString();
       });
       _mapController.move(LatLng(position.latitude, position.longitude), 10);
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         _statusMessage =
             "Could not detect location automatically. Enter it manually.";
@@ -159,6 +157,7 @@ class _ReportScreenState extends State<ReportScreen> {
       if (!mounted) return;
       Navigator.pop(context, true);
     } catch (error) {
+      if (!mounted) return;
       setState(() {
         _statusMessage = error.toString();
         _statusIsError = true;
@@ -223,19 +222,14 @@ class _ReportScreenState extends State<ReportScreen> {
                   FlutterMap(
                     mapController: _mapController,
                     options: MapOptions(
-                      initialCenter: _pickedLocation ?? _fallbackMapCenter,
+                      initialCenter: _pickedLocation ?? defaultMapCenter,
                       initialZoom: _pickedLocation != null
                           ? 10
-                          : _fallbackMapZoom,
+                          : defaultMapZoom,
                       onTap: (_, point) => _setLocation(point),
                     ),
                     children: [
-                      TileLayer(
-                        urlTemplate:
-                            "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-                        userAgentPackageName:
-                            "org.whalesightings.client_mobile",
-                      ),
+                      basemapTileLayer(),
                       if (_pickedLocation != null)
                         MarkerLayer(
                           markers: [

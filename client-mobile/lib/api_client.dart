@@ -20,7 +20,9 @@ Future<SightingRecord> createSighting(Sighting sighting) async {
   if (response.statusCode != 201) {
     throw Exception("Submit failed (${response.statusCode}): ${response.body}");
   }
-  return SightingRecord.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  return SightingRecord.fromJson(
+    jsonDecode(response.body) as Map<String, dynamic>,
+  );
 }
 
 Future<List<SightingRecord>> fetchSightings() async {
@@ -28,7 +30,9 @@ Future<List<SightingRecord>> fetchSightings() async {
   // (store.list_all() server-side). No filter UI in this v1 scope.
   final response = await http.get(Uri.parse("$apiBase/sightings"));
   if (response.statusCode != 200) {
-    throw Exception("Failed to load sightings (${response.statusCode}): ${response.body}");
+    throw Exception(
+      "Failed to load sightings (${response.statusCode}): ${response.body}",
+    );
   }
   final records = jsonDecode(response.body) as List<dynamic>;
   return records
