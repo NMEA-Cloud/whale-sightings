@@ -7,9 +7,15 @@ import "dart:convert";
 
 import "package:http/http.dart" as http;
 
+import "auth.dart" as auth;
 import "sighting.dart";
 
 const String apiBase = "https://localhost:8000";
+
+/// Thrown by deleteSighting() when there's no token, or the server rejects the one held —
+/// callers should trigger auth.login() and let the user retry, not retry automatically
+/// (matches client-admin/app.js's own deliberate no-auto-retry delete UX).
+class SightingDeleteUnauthorizedException implements Exception {}
 
 Future<SightingRecord> createSighting(Sighting sighting) async {
   final response = await http.post(
@@ -38,4 +44,18 @@ Future<List<SightingRecord>> fetchSightings() async {
   return records
       .map((record) => SightingRecord.fromJson(record as Map<String, dynamic>))
       .toList();
+}
+
+Future<void> deleteSighting(String id) async {
+  final token = auth.accessToken;
+  final response = await http.delete(
+    Uri.parse("$apiBase/sightings/$id"),
+    headers: token != null ? {"Authorization": "Bearer $token"} : {},
+  );
+  if (response.statusCode == 401) {
+    throw SightingDeleteUnauthorizedException();
+  }
+  if (response.statusCode != 204) {
+    throw Exception("Delete failed (${response.statusCode}): ${response.body}");
+  }
 }

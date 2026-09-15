@@ -3,6 +3,7 @@ import "package:flutter_map/flutter_map.dart";
 import "package:latlong2/latlong.dart";
 
 import "api_client.dart";
+import "auth.dart" as auth;
 import "map_config.dart";
 import "report_screen.dart";
 import "sighting.dart";
@@ -45,6 +46,47 @@ class _ListScreenState extends State<ListScreen> {
     );
     if (reported == true) {
       await _loadSightings();
+    }
+  }
+
+  Future<void> _handleDelete(SightingRecord record) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Delete this sighting?"),
+        content: Text(record.sighting.species),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Delete"),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await deleteSighting(record.id);
+      await _loadSightings();
+    } on SightingDeleteUnauthorizedException {
+      try {
+        await auth.login();
+        setState(() {
+          _errorMessage = "Signed in — tap delete again to finish.";
+        });
+      } catch (error) {
+        setState(() {
+          _errorMessage = error.toString();
+        });
+      }
+    } catch (error) {
+      setState(() {
+        _errorMessage = error.toString();
+      });
     }
   }
 
@@ -113,6 +155,10 @@ class _ListScreenState extends State<ListScreen> {
                       "${sighting.comments != null ? '\n${sighting.comments}' : ''}",
                     ),
                     isThreeLine: true,
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete),
+                      onPressed: () => _handleDelete(record),
+                    ),
                   );
                 },
               ),

@@ -15,6 +15,9 @@ the service is intended to eventually deploy to AWS.
 - `client-sse/` — same public client, live-updated via Server-Sent Events on the existing `GET /sightings` endpoint (`Accept: text/event-stream`) instead of MQTT, long-polling, or a dedicated WebSocket.
 - `shared/` — rendering/form/filter JS shared by `client-mqtt/`, `client-long-poll/`, `client-ws/`, and `client-sse/`, copied into each's image at build time — see "Running the clients" below.
 - `client-admin/` — vanilla HTML/CSS/JS admin client (stats + demo data loading), also runs in Docker.
+- `client-mobile/` — native iOS Flutter client (report + view, pull-to-refresh, and OAuth2
+  PKCE login for delete — see "OAuth2 login for the admin client" below). Not Docker-served;
+  run directly with `flutter run`/Xcode — see `client-mobile/README.md`.
 - `peer-service/` — a simulated second system demonstrating HATEOAS discovery — plain async
   Python, no FastAPI, no shared code with `service/`. See "peer-service" below.
 - `hydra/` — config for the self-hosted Ory Hydra OAuth2 authorization server.
@@ -512,6 +515,26 @@ Or lower `LOGIN_REMEMBER_SECONDS` in `docker-compose.yml` (e.g. to `60`) if you'
 the form reappear on its own shortly after each login, without running that command every
 time.
 
+### The mobile client's login
+
+`client-mobile/` (see "Project layout" above) can delete sightings too, by logging
+into this *same* shared admin identity via its own registered OAuth2 client — not a
+separate per-user account system, since there's exactly one privileged role in this whole
+project. `login-consent` is already fully client-agnostic (it grants `ext.role: admin` to
+whichever client drove the login, with no special-casing), so this needed no backend
+changes — just a second Hydra client registration, with a mobile-appropriate redirect URI
+(a custom URL scheme, since a native app has no web origin to redirect back to):
+
+```bash
+./scripts/register-hydra-mobile-client.sh
+```
+
+Same re-run/audience-must-match-`OAUTH_EXPECTED_AUDIENCE` caveats as
+`register-hydra-client.sh` above. The mobile app's delete UX mirrors the admin client's
+exactly: tapping delete with no active session triggers the same login-consent form (shown
+in a system browser sheet), and the delete is not auto-retried — tap it again once you're
+back.
+
 ## Whale Alert connector
 
 `whale-alert-connector` polls the real [Whale Alert](https://whalealert.org/) service,
@@ -901,3 +924,13 @@ This project is being built in stages:
     exact same `{event, sighting: <link>}` payload already published to MQTT/WS, per
     conversation with a collaborator who prefers lightweight notifications over embedding full
     records. Reflects creates, updates, and deletes live, same as the other three.
+13. **Done**: `client-mobile/`, a native iOS Flutter client — report + view with
+    pull-to-refresh (no login, no live-sync, matching the public web clients' own scope for
+    that part), plus OAuth2 PKCE login into the same shared admin identity `client-admin`
+    uses, so it can delete sightings too. No backend changes needed for the login piece —
+    `login-consent` already grants admin authority to any OAuth2 client that logs a user in
+    through it, so this was just a second Hydra client registration
+    (`scripts/register-hydra-mobile-client.sh`) plus PKCE client code in Flutter
+    (`flutter_appauth`). NOAA nautical-chart tile parity (plain OpenStreetMap tiles for now),
+    Android support, and physical-device support (Simulator-only currently) remain
+    intentional follow-ons.
