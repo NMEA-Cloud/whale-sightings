@@ -925,12 +925,15 @@ This project is being built in stages:
     conversation with a collaborator who prefers lightweight notifications over embedding full
     records. Reflects creates, updates, and deletes live, same as the other three.
 13. **Done**: `client-mobile/`, a native iOS Flutter client — report + view with
-    pull-to-refresh (no login, no live-sync, matching the public web clients' own scope for
-    that part), plus OAuth2 PKCE login into the same shared admin identity `client-admin`
-    uses, so it can delete sightings too. No backend changes needed for the login piece —
-    `login-consent` already grants admin authority to any OAuth2 client that logs a user in
-    through it, so this was just a second Hydra client registration
+    pull-to-refresh (no login, matching the public web clients' own scope for that part),
+    plus OAuth2 PKCE login into the same shared admin identity `client-admin` uses, so it can
+    delete sightings too. No backend changes needed for the login piece — `login-consent`
+    already grants admin authority to any OAuth2 client that logs a user in through it, so
+    this was just a second Hydra client registration
     (`scripts/register-hydra-mobile-client.sh`) plus PKCE client code in Flutter
-    (`flutter_appauth`). NOAA nautical-chart tile parity (plain OpenStreetMap tiles for now),
-    Android support, and physical-device support (Simulator-only currently) remain
-    intentional follow-ons.
+    (`flutter_appauth`). **Done**: live-sync via Server-Sent Events on the same
+    `GET /sightings` endpoint `client-sse/` uses (`lib/sse_client.dart`), with a hand-rolled
+    reconnect loop (no native `EventSource` in Dart) — matching `client-ws/`'s own reconnect
+    precedent rather than `client-sse/app.js`'s browser-native one. NOAA nautical-chart tile
+    parity (plain OpenStreetMap tiles for now), Android support, and physical-device support
+    (Simulator-only currently) remain intentional follow-ons.

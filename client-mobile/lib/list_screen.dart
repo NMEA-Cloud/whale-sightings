@@ -1,3 +1,5 @@
+import "dart:async";
+
 import "package:flutter/material.dart";
 import "package:flutter_map/flutter_map.dart";
 import "package:latlong2/latlong.dart";
@@ -7,6 +9,7 @@ import "auth.dart" as auth;
 import "map_config.dart";
 import "report_screen.dart";
 import "sighting.dart";
+import "sse_client.dart" as sse;
 
 class ListScreen extends StatefulWidget {
   const ListScreen({super.key});
@@ -18,21 +21,33 @@ class ListScreen extends StatefulWidget {
 class _ListScreenState extends State<ListScreen> {
   List<SightingRecord> _sightings = [];
   String? _errorMessage;
+  StreamSubscription<void>? _sseSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadSightings();
+    sse.start();
+    _sseSubscription = sse.events.listen((_) => _loadSightings());
+  }
+
+  @override
+  void dispose() {
+    _sseSubscription?.cancel();
+    sse.stop(); // fire-and-forget — dispose() can't be async
+    super.dispose();
   }
 
   Future<void> _loadSightings() async {
     try {
       final sightings = await fetchSightings();
+      if (!mounted) return;
       setState(() {
         _sightings = sightings;
         _errorMessage = null;
       });
     } catch (error) {
+      if (!mounted) return;
       setState(() {
         _errorMessage = error.toString();
       });
