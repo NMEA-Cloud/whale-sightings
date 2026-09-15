@@ -15,11 +15,28 @@ from app.hydra_admin import HydraAdminClient
 _EXPIRED_CHALLENGE_STATUSES = {401, 404, 410}
 
 
+# Shared by both pages below. Without the viewport meta tag, mobile Safari (e.g. the
+# client-mobile PKCE flow's in-app browser sheet) renders this at a default desktop-width
+# viewport and zooms out to fit — this is what actually makes an unstyled page look tiny and
+# hard to tap on a phone, more than the missing CSS itself. The CSS on top just makes the
+# touch targets a reasonable size; none of this affects client-admin's desktop rendering,
+# it just no longer assumes a desktop-sized viewport by default.
+_HEAD = """<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 22rem; margin: 3rem auto; padding: 0 1rem; }
+  label { display: block; margin-top: 1rem; }
+  input, button { font-size: 1rem; padding: 0.6rem; width: 100%; box-sizing: border-box; margin-top: 0.25rem; }
+  button { margin-top: 1.5rem; }
+  .error { color: #b00020; }
+</style>"""
+
+
 def _expired_challenge_page() -> HTMLResponse:
     return HTMLResponse(
-        """<!doctype html>
+        f"""<!doctype html>
 <html>
-<head><title>Sign-in link expired</title></head>
+<head><title>Sign-in link expired</title>{_HEAD}</head>
 <body>
   <h1>This sign-in link has expired</h1>
   <p class="error">
@@ -46,7 +63,7 @@ def _login_page(login_challenge: str, error: str | None = None) -> str:
     error_html = f'<p class="error">{error}</p>' if error else ""
     return f"""<!doctype html>
 <html>
-<head><title>Sign in</title></head>
+<head><title>Sign in</title>{_HEAD}</head>
 <body>
   <h1>Whale Sightings admin sign in</h1>
   {error_html}
