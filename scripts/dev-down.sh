@@ -5,6 +5,15 @@
 # closed on its own (docker compose exiting closes its window by default) shouldn't stop the
 # rest of teardown from running, so each step below is individually tolerant of failure.
 #
+# Stopping the containers does NOT depend on the tmux session still existing. dev-up.sh's
+# docker compose processes run as the foreground job in a tmux pane, but the containers
+# themselves are managed by dockerd and keep running under it even if tmux itself dies
+# abnormally (a sleeping/restarted machine or a crashed tmux server doesn't necessarily give
+# those panes' child processes a chance to shut their containers down first). This used to be
+# gated behind `tmux has-session`, so an already-dead tmux session made this script print
+# "nothing to tear down" while the containers it started kept running indefinitely — the
+# actual teardown always runs now; the tmux session is a separate, optional cleanup step.
+#
 # Usage: ./scripts/dev-down.sh [--clear-data]
 #   --clear-data   Also FLUSHALL the Valkey store before stopping containers — every
 #                  sighting (local, peer, and whale_alert) and the whale-alert-connector's
@@ -30,11 +39,6 @@ done
 cd "$(dirname "$0")/.."
 SESSION="whale-sightings"
 
-if ! command -v tmux >/dev/null 2>&1 || ! tmux has-session -t "$SESSION" 2>/dev/null; then
-  echo "No '$SESSION' tmux session running — nothing to tear down."
-  exit 0
-fi
-
 if [ "$CLEAR_DATA" = true ]; then
   echo "Clearing the Valkey store (--clear-data)..."
   # Must run before `docker compose down` below, while valkey is still up to exec into.
@@ -49,11 +53,14 @@ echo "Stopping docker compose (app and infra projects)..."
 docker compose --profile '*' down || true
 docker compose -f infra/docker-compose.yml down || true
 
-echo "Deactivating venv in the shell window..."
-tmux send-keys -t "$SESSION:shell" C-c 2>/dev/null || true
-tmux send-keys -t "$SESSION:shell" "deactivate" Enter 2>/dev/null || true
+if command -v tmux >/dev/null 2>&1 && tmux has-session -t "$SESSION" 2>/dev/null; then
+  echo "Deactivating venv in the shell window..."
+  tmux send-keys -t "$SESSION:shell" C-c 2>/dev/null || true
+  tmux send-keys -t "$SESSION:shell" "deactivate" Enter 2>/dev/null || true
 
-sleep 1
-tmux kill-session -t "$SESSION" 2>/dev/null || true
-
-echo "Session '$SESSION' torn down."
+  sleep 1
+  tmux kill-session -t "$SESSION" 2>/dev/null || true
+  echo "Session '$SESSION' torn down."
+else
+  echo "No '$SESSION' tmux session running — containers stopped, nothing else to tear down."
+fi
