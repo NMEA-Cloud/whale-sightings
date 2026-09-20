@@ -92,10 +92,11 @@ docker network create whale-sightings-net    # one-time: shared network, see "In
 ```
 
 This writes `certs/localhost.pem` and `certs/localhost-key.pem` (gitignored). Re-run it any
-time; it's idempotent — running containers need a restart afterward to pick up a re-issued
-cert. `docker-compose.yml`/`infra/docker-compose.yml` mount `certs/` into the relevant
-containers, and `uvicorn` (both in Docker and when run directly, see below) is configured to
-use them.
+time; it's idempotent, and automatically restarts the containers that need it afterward to
+pick up the reissued cert — day to day, this also happens on its own via the automatic
+renewal daemon, see "Automatic TLS renewal" below. `docker-compose.yml`/
+`infra/docker-compose.yml` mount `certs/` into the relevant containers, and `uvicorn` (both
+in Docker and when run directly, see below) is configured to use them.
 
 ### Infra project (Hydra, login-consent, step-ca)
 
@@ -137,6 +138,31 @@ backend, which hard-fails when it can't check a certificate's revocation status 
 issued certs have no CRL/OCSP endpoint to check, so plain `curl https://localhost:8000/...`
 will error with `CRYPT_E_NO_REVOCATION_CHECK`. Add `--ssl-no-revoke` to `curl` calls on
 Windows (not needed on macOS/Linux, and not an issue for browsers, which soft-fail instead).
+
+### Automatic TLS renewal (cert-renewer)
+
+step-ca issues leaf certs with only a 24-hour lifetime (see `scripts/setup-tls.sh` — no
+`--not-after` is set, so it inherits step-ca's default), which would otherwise mean every
+developer re-running `setup-tls.sh` and restarting four containers (`service`, `mqtt`,
+`hydra`, `login-consent`) by hand roughly once a day. The infra project's `cert-renewer`
+container (`cert-renewer/`) automates both halves of that: it runs `step ca renew --daemon`
+against the same `certs/localhost.pem`/`certs/localhost-key.pem` files, authenticating via
+mTLS with the cert itself (no provisioner password needed, unlike initial issuance), and its
+`--exec` hook restarts those four containers via a mounted Docker socket every time a
+renewal succeeds — see `cert-renewer/restart-consumers.sh`. It comes up automatically with
+`./scripts/dev-up.sh` / `docker compose -f infra/docker-compose.yml up`, no extra flag or
+profile needed.
+
+It only *renews* an already-issued cert — it can't perform the first issuance, so
+`scripts/setup-tls.sh` above is still required at least once per machine.
+`cert-renewer/entrypoint.sh` waits for both `certs/` to be populated and step-ca to be
+healthy before starting its renewal loop, so bringing the infra project up before ever
+running `setup-tls.sh` just waits quietly rather than crash-looping.
+
+Mounting the Docker socket into this container gives it root-equivalent access to the host's
+Docker daemon — an accepted dev-only tradeoff, the same posture as this repo's other
+committed placeholder secrets (`DOCKER_STEPCA_INIT_PASSWORD`, `SECRETS_SYSTEM`, etc.). Don't
+carry this pattern into anything beyond a local/LAN dev or trade-show demo environment.
 
 ### TLS for remote clients
 

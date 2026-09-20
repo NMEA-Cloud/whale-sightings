@@ -14,6 +14,11 @@
 # the shared external network the two compose projects join (one-time setup):
 #   docker network create whale-sightings-net
 #
+# The infra project's cert-renewer container (added for automatic TLS renewal) tolerates
+# being started before setup-tls.sh has ever run — it just waits quietly for certs/ to be
+# populated — so this isn't a hard ordering requirement, just a reminder that TLS won't
+# actually work end-to-end until that first run happens.
+#
 # Usage: ./scripts/dev-up.sh [--with-whale-alert] [--with-whale-alert-mock] [--with-peer-service]
 #   --with-whale-alert        Also start whale-alert-connector (opt-in, real Whale Alert API
 #                              calls by default — see the README). Requires

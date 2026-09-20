@@ -128,6 +128,30 @@ services:
     depends_on:
       - hydra
 
+  # --- cert-renewer: keeps certs/localhost.pem alive unattended after scripts/setup-tls.sh's
+  # initial issuance ---
+  #
+  # step-ca issues leaf certs with a 24h lifetime (see scripts/setup-tls.sh) and no built-in
+  # renewal — this container runs `step ca renew --daemon` against the same files,
+  # authenticating via mTLS with the existing cert/key (no provisioner password needed), then
+  # restarts the 4 containers that read the leaf cert once at startup and never re-read it —
+  # see cert-renewer/restart-consumers.sh. Does NOT replace scripts/setup-tls.sh's role as the
+  # *initial* issuance step: cert-renewer/entrypoint.sh waits for certs/ to be populated and
+  # step-ca to be healthy before starting the renew loop, so bringing this up before
+  # setup-tls.sh has ever run just waits quietly instead of crash-looping. Needs read-write
+  # access to certs/ (unlike every other consumer, which mounts it :ro), and the host Docker
+  # socket so its restart hook can reach containers in both compose projects by name — see
+  # the README's "Automatic TLS renewal" section for the tradeoffs of that mount. No
+  # whale-sightings-net needed: it only talks to step-ca on this project's own default
+  # network, plus the host socket — never to any service by Docker-internal DNS.
+  cert-renewer:
+    build: ../cert-renewer
+    volumes:
+      - ../certs:/certs
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - step-ca
+
 networks:
   whale-sightings-net:
     external: true

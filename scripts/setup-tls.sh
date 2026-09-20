@@ -90,11 +90,23 @@ step ca certificate localhost certs/localhost.pem certs/localhost-key.pem \
 # verification.
 cp ~/.step/certs/root_ca.crt certs/rootCA.pem
 
+# Restart the four containers that read certs/*.pem once at startup and never watch the file
+# afterward, plus cert-renewer itself — its own renewal-timing state was computed from
+# whatever cert was on disk when *it* last started, so restart it too rather than relying on
+# undocumented internal re-read behavior in `step ca renew --daemon` (see the README's
+# "Automatic TLS renewal" section). `|| true` per name: harmless if a container isn't running
+# (e.g. only one of the two compose projects is up) or doesn't exist yet (very first run,
+# before any `docker compose up`).
+for name in wombat-sightings-service-1 wombat-sightings-mqtt-1 booth-boat-hydra-1 \
+    booth-boat-login-consent-1 booth-boat-cert-renewer-1; do
+  docker restart "$name" >/dev/null 2>&1 || true
+done
+
 echo
 echo "TLS cert written to certs/. Run 'docker compose up --build' (app project) and"
 echo "'docker compose -f infra/docker-compose.yml up --build' (infra project) — or just"
 echo "./scripts/dev-up.sh, which brings up both — to pick it up."
-echo "(Existing running containers need a restart to pick up a re-issued cert.)"
+echo "(Already-running containers were restarted automatically to pick up the reissued cert.)"
 
 if [ "$#" -eq 0 ]; then
   echo
