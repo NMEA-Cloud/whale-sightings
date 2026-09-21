@@ -35,7 +35,7 @@ class IngestSettings(BaseSettings):
     ingest_hydra_token_url: str = "https://hydra:4444/oauth2/token"
     ingest_hydra_client_id: str
     ingest_hydra_client_secret: str
-    ingest_hydra_audience: str = "https://api.dev.wombat-sightings.org:8000"
+    ingest_hydra_audience: str = "https://api.dev.whale-sightings.org:8000"
 
     # Valkey — used only for this connector's own "retired" bookkeeping set (see poller.py),
     # never for SightingRecord data itself (that always goes through service_client.py).

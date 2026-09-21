@@ -16,7 +16,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-API_BASE="${1:-https://api.dev.wombat-sightings.org:8000}"
+API_BASE="${1:-https://api.dev.whale-sightings.org:8000}"
 CLIENT_ID="whale-sightings-mobile"
 REDIRECT_URI="com.andyfox.whalesightings.clientmobile:/oauth2redirect"
 

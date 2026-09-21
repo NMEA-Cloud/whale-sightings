@@ -35,7 +35,7 @@ def test_get_token_posts_form_encoded_client_credentials_request():
     assert body["client_id"] == ["hydra-id"]
     assert body["client_secret"] == ["hydra-secret"]
     assert body["scope"] == ["sightings:ingest"]
-    assert body["audience"] == ["https://api.dev.wombat-sightings.org:8000"]
+    assert body["audience"] == ["https://api.dev.whale-sightings.org:8000"]
 
 
 def test_get_token_caches_until_near_expiry():

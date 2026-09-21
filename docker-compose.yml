@@ -1,4 +1,4 @@
-name: wombat-sightings
+name: whale-sightings
 
 # App project: service, Valkey, MQTT broker, and (eventually) the containerized clients. The
 # OAuth2/OIDC infrastructure (Hydra, login-consent) and step-ca live in the separate
@@ -46,12 +46,12 @@ services:
       MQTT_HOST: mqtt
       MQTT_PORT: 8883
       CORS_ORIGINS: http://localhost:8080,http://localhost:8081,http://localhost:8082,http://localhost:8083,http://localhost:8084
-      PUBLIC_API_BASE_URL: https://api.dev.wombat-sightings.org:8000
+      PUBLIC_API_BASE_URL: https://api.dev.whale-sightings.org:8000
       # The only setting that changes if the OAuth2 authorization server (hydra) relocates
       # to a different LAN machine — see hydra/hydra.yml's URLS_SELF_ISSUER comment. Must
       # keep matching hydra's browser-facing issuer, not the Docker-internal hostname below.
       OAUTH_ISSUER_URL: https://auth.dev.whale-auth.org:4444
-      OAUTH_EXPECTED_AUDIENCE: https://api.dev.wombat-sightings.org:8000
+      OAUTH_EXPECTED_AUDIENCE: https://api.dev.whale-sightings.org:8000
       # Docker-internal-only: "localhost" above isn't reachable from this container, so JWKS
       # fetches go here instead. Never changes on relocation — see config.py's comment. Only
       # resolves because `service` is also on whale-sightings-net, shared with the whale-auth
@@ -90,7 +90,7 @@ services:
       INGEST_SERVICE_API_BASE: https://service:8000
       INGEST_CA_BUNDLE_PATH: /certs/rootCA.pem
       INGEST_HYDRA_TOKEN_URL: https://hydra:4444/oauth2/token
-      INGEST_HYDRA_AUDIENCE: https://api.dev.wombat-sightings.org:8000
+      INGEST_HYDRA_AUDIENCE: https://api.dev.whale-sightings.org:8000
       VALKEY_HOST: valkey
       VALKEY_PORT: 6379
     volumes:
@@ -219,4 +219,8 @@ networks:
     external: true
 
 volumes:
+  # Pinned (unlike the default Compose-derived name) so a future project rename can't silently
+  # orphan this volume — hydra-sqlite/step-ca-data in infra/docker-compose.yml already follow
+  # this same convention.
   valkey-data:
+    name: whale-sightings_valkey-data

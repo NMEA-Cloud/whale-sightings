@@ -1,7 +1,7 @@
 name: whale-auth
 
 # Infrastructure project: step-ca, Hydra (OAuth2/OIDC), and its login/consent UI. Split out
-# from the root docker-compose.yml (the "wombat-sightings" app project) so this rehearses the
+# from the root docker-compose.yml (the "whale-sightings" app project) so this rehearses the
 # eventual physical split — this infra moving to a Raspberry Pi acting as the trade-show LAN
 # router, while the app project stays on whatever machine(s) run the clients. Joined to the
 # app project via the whale-sightings-net external network (see root docker-compose.yml) so
