@@ -14,6 +14,6 @@ echo "[cert-renewer] Certificate renewed — restarting TLS-terminating containe
 docker restart \
   wombat-sightings-service-1 \
   wombat-sightings-mqtt-1 \
-  booth-boat-hydra-1 \
-  booth-boat-login-consent-1
+  whale-auth-hydra-1 \
+  whale-auth-login-consent-1
 echo "[cert-renewer] Restart complete."

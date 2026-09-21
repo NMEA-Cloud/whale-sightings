@@ -1,4 +1,4 @@
-name: booth-boat
+name: whale-auth
 
 # Infrastructure project: step-ca, Hydra (OAuth2/OIDC), and its login/consent UI. Split out
 # from the root docker-compose.yml (the "wombat-sightings" app project) so this rehearses the
@@ -95,9 +95,9 @@ services:
       SECRETS_SYSTEM: youReallyNeedToChangeThis
       # The three values that change if this AS relocates to a different LAN machine — now
       # its own resolvable identity instead of localhost/hydra, per the split above.
-      URLS_SELF_ISSUER: https://auth.dev.booth-boat.org:4444
-      URLS_LOGIN: https://auth.dev.booth-boat.org:4446/login
-      URLS_CONSENT: https://auth.dev.booth-boat.org:4446/consent
+      URLS_SELF_ISSUER: https://auth.dev.whale-auth.org:4444
+      URLS_LOGIN: https://auth.dev.whale-auth.org:4446/login
+      URLS_CONSENT: https://auth.dev.whale-auth.org:4446/consent
     command: serve -c /etc/config/hydra/hydra.yml all
     volumes:
       - hydra-sqlite:/mnt/sqlite
