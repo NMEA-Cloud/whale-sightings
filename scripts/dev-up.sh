@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Starts the full dev environment in a tmux session — one window each for the app project's
 # docker compose (which now also builds and serves all three static clients — see
-# docker-compose.yml), the infra ("booth-boat") project's docker compose, and a free shell
+# docker-compose.yml), the infra ("whale-auth") project's docker compose, and a free shell
 # (with service/.venv activated). Works from any terminal app (tmux owns the panes, not the
 # surrounding app).
 # Safe to re-run: if the session is already running the compose stack, this just attaches to

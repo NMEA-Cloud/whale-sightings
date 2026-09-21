@@ -2,7 +2,7 @@ name: wombat-sightings
 
 # App project: service, Valkey, MQTT broker, and (eventually) the containerized clients. The
 # OAuth2/OIDC infrastructure (Hydra, login-consent) and step-ca live in the separate
-# "booth-boat" project (infra/docker-compose.yml) — see that file's header comment for why.
+# "whale-auth" project (infra/docker-compose.yml) — see that file's header comment for why.
 # Joined to it via the whale-sightings-net external network so `service` can still resolve
 # `hydra` by Docker-internal name for JWKS fetches. Create the network once per machine:
 #   docker network create whale-sightings-net
@@ -50,11 +50,11 @@ services:
       # The only setting that changes if the OAuth2 authorization server (hydra) relocates
       # to a different LAN machine — see hydra/hydra.yml's URLS_SELF_ISSUER comment. Must
       # keep matching hydra's browser-facing issuer, not the Docker-internal hostname below.
-      OAUTH_ISSUER_URL: https://auth.dev.booth-boat.org:4444
+      OAUTH_ISSUER_URL: https://auth.dev.whale-auth.org:4444
       OAUTH_EXPECTED_AUDIENCE: https://api.dev.wombat-sightings.org:8000
       # Docker-internal-only: "localhost" above isn't reachable from this container, so JWKS
       # fetches go here instead. Never changes on relocation — see config.py's comment. Only
-      # resolves because `service` is also on whale-sightings-net, shared with the booth-boat
+      # resolves because `service` is also on whale-sightings-net, shared with the whale-auth
       # infra project that actually runs `hydra` — see this file's header comment.
       OAUTH_JWKS_URL: https://hydra:4444
       OAUTH_CA_BUNDLE_PATH: /certs/rootCA.pem

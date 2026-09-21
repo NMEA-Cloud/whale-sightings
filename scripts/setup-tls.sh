@@ -19,7 +19,7 @@ if ! command -v step >/dev/null 2>&1; then
   exit 1
 fi
 
-# step-ca lives in the infra ("booth-boat") project, not this one — see
+# step-ca lives in the infra ("whale-auth") project, not this one — see
 # infra/docker-compose.yml's header comment for why they're split.
 INFRA_COMPOSE=(docker compose -f infra/docker-compose.yml)
 
@@ -60,14 +60,14 @@ fi
 # MQTT broker, and the service itself (docker-compose.yml's service names for them), not
 # per-machine values. "service" specifically is what whale-alert-connector's
 # INGEST_SERVICE_API_BASE (https://service:8000) connects to — without it here, the
-# connector's TLS verification fails with a hostname mismatch. auth.dev.booth-boat.org/
+# connector's TLS verification fails with a hostname mismatch. auth.dev.whale-auth.org/
 # api.dev.wombat-sightings.org are also always included: they're Hydra's/service's fixed
 # browser-facing identities (URLS_SELF_ISSUER, PUBLIC_API_BASE_URL — see
 # docker-compose.yml/infra/docker-compose.yml), not per-machine values either. Omitting any of
 # these here would silently break the OAuth2 login flow, MQTT TLS, or the whale-alert
 # connector on the next cert re-issuance.
 SANS=(--san localhost --san 127.0.0.1 --san ::1 --san hydra --san mqtt --san service \
-  --san auth.dev.booth-boat.org --san api.dev.wombat-sightings.org)
+  --san auth.dev.whale-auth.org --san api.dev.wombat-sightings.org)
 for host in "$@"; do
   SANS+=(--san "$host")
 done
@@ -97,8 +97,8 @@ cp ~/.step/certs/root_ca.crt certs/rootCA.pem
 # "Automatic TLS renewal" section). `|| true` per name: harmless if a container isn't running
 # (e.g. only one of the two compose projects is up) or doesn't exist yet (very first run,
 # before any `docker compose up`).
-for name in wombat-sightings-service-1 wombat-sightings-mqtt-1 booth-boat-hydra-1 \
-    booth-boat-login-consent-1 booth-boat-cert-renewer-1; do
+for name in wombat-sightings-service-1 wombat-sightings-mqtt-1 whale-auth-hydra-1 \
+    whale-auth-login-consent-1 whale-auth-cert-renewer-1; do
   docker restart "$name" >/dev/null 2>&1 || true
 done
 

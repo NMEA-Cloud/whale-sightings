@@ -28,7 +28,7 @@ the service is intended to eventually deploy to AWS.
   `service`, `valkey`, `mqtt`, all five static clients, and `peer-service`, plus two opt-in,
   profile-gated services — `whale-alert-connector` and `whale-alert-mock` (see "Whale Alert
   connector" below).
-- `infra/docker-compose.yml` — the **infra** project (Compose project name `booth-boat`): runs
+- `infra/docker-compose.yml` — the **infra** project (Compose project name `whale-auth`): runs
   `step-ca`, `hydra`, `login-consent`, and `dns`. Split into its own project so this rehearses
   the eventual move of this infrastructure onto a separate physical machine (a Raspberry Pi
   acting as a trade-show LAN router) — see that file's header comment. Joined to the app
@@ -51,12 +51,12 @@ the service is intended to eventually deploy to AWS.
 | 9100 | `whale-alert-mock` | localhost | app | HTTP, opt-in (`whale-alert-mock` profile — see "Whale Alert connector") |
 | 9000 | `step-ca` | localhost | infra | HTTPS (CA API) |
 | 53 | `dns` | localhost | infra | DNS, tcp + udp |
-| 4444 | `hydra` | auth.dev.booth-boat.org | infra | HTTPS, public (OAuth2/OIDC endpoints, discovery doc) — also reachable at localhost:4444 |
+| 4444 | `hydra` | auth.dev.whale-auth.org | infra | HTTPS, public (OAuth2/OIDC endpoints, discovery doc) — also reachable at localhost:4444 |
 | 4445 | `hydra` | localhost | infra | HTTPS, admin (login/consent request management) |
-| 4446 | `login-consent` | auth.dev.booth-boat.org | infra | HTTPS — also reachable at localhost:4446 |
+| 4446 | `login-consent` | auth.dev.whale-auth.org | infra | HTTPS — also reachable at localhost:4446 |
 
 "app" = `docker-compose.yml` (project `wombat-sightings`); "infra" = `infra/docker-compose.yml`
-(project `booth-boat`) — see "Project layout" above.
+(project `whale-auth`) — see "Project layout" above.
 
 ## Prerequisites
 
@@ -107,7 +107,7 @@ above, so `service` can still resolve `hydra` by name for JWKS fetches. Bring it
 the app project with `./scripts/dev-up.sh`, or independently with
 `docker compose -f infra/docker-compose.yml up --build`.
 
-Hydra and the service identify themselves as `auth.dev.booth-boat.org` and
+Hydra and the service identify themselves as `auth.dev.whale-auth.org` and
 `api.dev.wombat-sightings.org` respectively (not `localhost`) — this is what
 `scripts/setup-tls.sh` issues certs for by default. Since these aren't real public DNS names,
 the infra project runs a `dns` service (dnsmasq — see `dnsmasq/whale-sightings.conf` for the
@@ -117,7 +117,7 @@ through it, not all DNS on the machine) via `/etc/resolver/`:
 
 ```bash
 sudo mkdir -p /etc/resolver
-sudo sh -c 'printf "nameserver 127.0.0.1\nport 53\n" > /etc/resolver/booth-boat.org'
+sudo sh -c 'printf "nameserver 127.0.0.1\nport 53\n" > /etc/resolver/whale-auth.org'
 sudo sh -c 'printf "nameserver 127.0.0.1\nport 53\n" > /etc/resolver/wombat-sightings.org'
 ```
 

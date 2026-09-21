@@ -60,14 +60,14 @@ step certificate install "$HOME\.step\certs\root_ca.crt"
 # MQTT broker, and the service itself (docker-compose.yml's service names for them), not
 # per-machine values. "service" specifically is what whale-alert-connector's
 # INGEST_SERVICE_API_BASE (https://service:8000) connects to - without it here, the
-# connector's TLS verification fails with a hostname mismatch. auth.dev.booth-boat.org/
+# connector's TLS verification fails with a hostname mismatch. auth.dev.whale-auth.org/
 # api.dev.wombat-sightings.org are also always included: they're Hydra's/service's fixed
 # browser-facing identities (URLS_SELF_ISSUER, PUBLIC_API_BASE_URL - see
 # docker-compose.yml/infra/docker-compose.yml), not per-machine values either. Omitting any of
 # these here would silently break the OAuth2 login flow, MQTT TLS, or the whale-alert
 # connector on the next cert re-issuance.
 $Sans = @("--san", "localhost", "--san", "127.0.0.1", "--san", "::1", "--san", "hydra", `
-    "--san", "mqtt", "--san", "service", "--san", "auth.dev.booth-boat.org", "--san", "api.dev.wombat-sightings.org")
+    "--san", "mqtt", "--san", "service", "--san", "auth.dev.whale-auth.org", "--san", "api.dev.wombat-sightings.org")
 foreach ($name in $ExtraNames) {
     $Sans += @("--san", $name)
 }

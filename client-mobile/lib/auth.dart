@@ -7,7 +7,7 @@
 import "package:flutter_appauth/flutter_appauth.dart";
 
 const String _clientId = "whale-sightings-mobile";
-const String _issuer = "https://auth.dev.booth-boat.org:4444";
+const String _issuer = "https://auth.dev.whale-auth.org:4444";
 const String _redirectUrl =
     "com.andyfox.whalesightings.clientmobile:/oauth2redirect";
 const String _audience = "https://api.dev.wombat-sightings.org:8000";
