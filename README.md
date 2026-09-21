@@ -24,7 +24,7 @@ the service is intended to eventually deploy to AWS.
 - `login-consent/` — small FastAPI app serving Hydra's login/consent screens.
 - `dnsmasq/` — config for the `dns` service (see `infra/docker-compose.yml`) that resolves
   the `dev.`-subdomain hostnames below.
-- `docker-compose.yml` — the **app** project (Compose project name `wombat-sightings`): runs
+- `docker-compose.yml` — the **app** project (Compose project name `whale-sightings`): runs
   `service`, `valkey`, `mqtt`, all five static clients, and `peer-service`, plus two opt-in,
   profile-gated services — `whale-alert-connector` and `whale-alert-mock` (see "Whale Alert
   connector" below).
@@ -42,7 +42,7 @@ the service is intended to eventually deploy to AWS.
 | 6379 | `valkey` | localhost | app | Redis protocol |
 | 8883 | `mqtt` | localhost | app | MQTT, TLS required (`mqtts`) |
 | 9001 | `mqtt` | localhost | app | MQTT over WebSockets |
-| 8000 | `service` | api.dev.wombat-sightings.org | app | HTTPS (FastAPI) — also reachable at localhost:8000 |
+| 8000 | `service` | api.dev.whale-sightings.org | app | HTTPS (FastAPI) — also reachable at localhost:8000 |
 | 8080 | `client-admin` | localhost | app | HTTP |
 | 8081 | `client-mqtt` | localhost | app | HTTP |
 | 8082 | `client-long-poll` | localhost | app | HTTP |
@@ -55,7 +55,7 @@ the service is intended to eventually deploy to AWS.
 | 4445 | `hydra` | localhost | infra | HTTPS, admin (login/consent request management) |
 | 4446 | `login-consent` | auth.dev.whale-auth.org | infra | HTTPS — also reachable at localhost:4446 |
 
-"app" = `docker-compose.yml` (project `wombat-sightings`); "infra" = `infra/docker-compose.yml`
+"app" = `docker-compose.yml` (project `whale-sightings`); "infra" = `infra/docker-compose.yml`
 (project `whale-auth`) — see "Project layout" above.
 
 ## Prerequisites
@@ -108,7 +108,7 @@ the app project with `./scripts/dev-up.sh`, or independently with
 `docker compose -f infra/docker-compose.yml up --build`.
 
 Hydra and the service identify themselves as `auth.dev.whale-auth.org` and
-`api.dev.wombat-sightings.org` respectively (not `localhost`) — this is what
+`api.dev.whale-sightings.org` respectively (not `localhost`) — this is what
 `scripts/setup-tls.sh` issues certs for by default. Since these aren't real public DNS names,
 the infra project runs a `dns` service (dnsmasq — see `dnsmasq/whale-sightings.conf` for the
 actual records) that answers for them and forwards everything else upstream normally. Point
@@ -118,7 +118,7 @@ through it, not all DNS on the machine) via `/etc/resolver/`:
 ```bash
 sudo mkdir -p /etc/resolver
 sudo sh -c 'printf "nameserver 127.0.0.1\nport 53\n" > /etc/resolver/whale-auth.org'
-sudo sh -c 'printf "nameserver 127.0.0.1\nport 53\n" > /etc/resolver/wombat-sightings.org'
+sudo sh -c 'printf "nameserver 127.0.0.1\nport 53\n" > /etc/resolver/whale-sightings.org'
 ```
 
 (On Windows/Linux, or if the `dns` container runs on a different machine on the LAN, point
@@ -792,7 +792,7 @@ Docker-internal names — needs no new compose file or tooling, just a different
 ```bash
 docker build -t peer-service ./peer-service
 docker run --rm \
-  -e API_BASE=https://api.dev.wombat-sightings.org:8000 \
+  -e API_BASE=https://api.dev.whale-sightings.org:8000 \
   -e PEER_CLIENT_ID=<from the registration script> \
   -e PEER_CLIENT_SECRET=<from the registration script> \
   -v /path/to/rootCA.pem:/rootCA.pem:ro \

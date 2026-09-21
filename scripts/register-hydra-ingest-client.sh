@@ -18,7 +18,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-API_BASE="${1:-https://api.dev.wombat-sightings.org:8000}"
+API_BASE="${1:-https://api.dev.whale-sightings.org:8000}"
 CLIENT_ID="whale-sightings-ingest"
 
 docker compose -f infra/docker-compose.yml exec hydra hydra delete oauth2-client "$CLIENT_ID" \

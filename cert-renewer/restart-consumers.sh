@@ -12,8 +12,8 @@ echo "[cert-renewer] Certificate renewed — restarting TLS-terminating containe
 # One call, not split by project: docker restart handles each name independently and logs a
 # harmless "No such container" for one that isn't running rather than aborting the rest.
 docker restart \
-  wombat-sightings-service-1 \
-  wombat-sightings-mqtt-1 \
+  whale-sightings-service-1 \
+  whale-sightings-mqtt-1 \
   whale-auth-hydra-1 \
   whale-auth-login-consent-1
 echo "[cert-renewer] Restart complete."
