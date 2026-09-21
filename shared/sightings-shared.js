@@ -89,11 +89,30 @@ function togglePickTarget(target) {
 const NOAA_CHART_EXPORT_URL =
   "https://gis.charttools.noaa.gov/arcgis/rest/services/MCS/NOAAChartDisplay/MapServer/exts/MaritimeChartService/MapServer/export";
 
+// Plain OpenStreetMap tiles — the default basemap (see basemapMode below). NOAA's chart
+// overlay above only covers U.S. coastal waters, which leaves it blank for e.g. the Dallas,
+// TX trade show — OSM works everywhere, with NOAA available as an opt-in toggle for
+// coastal-area demos (Puget Sound, this project's own sample data).
+const OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const OSM_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+const BASEMAP_STORAGE_KEY = "basemapMode";
+
 function initMap() {
   map = L.map("map").setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM);
 
+  // "osm" | "noaa" — remembered per-browser so a chosen mode survives a reload.
+  let basemapMode = "osm";
+  try {
+    const saved = localStorage.getItem(BASEMAP_STORAGE_KEY);
+    if (saved === "noaa" || saved === "osm") basemapMode = saved;
+  } catch {
+    // localStorage unavailable (private browsing, etc.) — falls back to the "osm" default above.
+  }
+
   let chartOverlay = null;
   function updateChartOverlay() {
+    if (basemapMode !== "noaa") return;
     const bounds = map.getBounds();
     const size = map.getSize();
     const sw = L.CRS.EPSG3857.project(bounds.getSouthWest());
@@ -123,7 +142,54 @@ function initMap() {
       }
     });
   }
-  updateChartOverlay();
+
+  let osmLayer = null;
+  let basemapButton = null;
+  function applyBasemapMode() {
+    if (basemapMode === "osm") {
+      if (chartOverlay) {
+        map.removeLayer(chartOverlay);
+        chartOverlay = null;
+      }
+      if (!osmLayer) {
+        osmLayer = L.tileLayer(OSM_TILE_URL, { maxZoom: 19, attribution: OSM_ATTRIBUTION });
+      }
+      osmLayer.addTo(map).bringToBack();
+    } else {
+      if (osmLayer) map.removeLayer(osmLayer);
+      updateChartOverlay();
+    }
+    if (basemapButton) {
+      basemapButton.textContent = basemapMode === "osm" ? "Show NOAA charts" : "Show OpenStreetMap";
+    }
+  }
+  function toggleBasemapMode() {
+    basemapMode = basemapMode === "osm" ? "noaa" : "osm";
+    try {
+      localStorage.setItem(BASEMAP_STORAGE_KEY, basemapMode);
+    } catch {
+      // Non-fatal — the toggle still works for the rest of this session, just doesn't persist.
+    }
+    applyBasemapMode();
+  }
+
+  // Plain button + .active-style toggle, matching this codebase's existing "Pick on map"
+  // pattern, rather than L.control.layers — injected here instead of added to each client's
+  // index.html, so every client that loads this shared file gets it with no per-client HTML.
+  const BasemapControl = L.Control.extend({
+    options: { position: "topright" },
+    onAdd: function () {
+      basemapButton = L.DomUtil.create("button", "leaflet-bar");
+      basemapButton.type = "button";
+      basemapButton.style.cssText = "padding: 6px 10px; cursor: pointer; font: inherit;";
+      L.DomEvent.disableClickPropagation(basemapButton);
+      basemapButton.addEventListener("click", toggleBasemapMode);
+      return basemapButton;
+    },
+  });
+  new BasemapControl().addTo(map);
+
+  applyBasemapMode();
   map.on("moveend", updateChartOverlay);
 
   markersLayer = L.layerGroup().addTo(map);

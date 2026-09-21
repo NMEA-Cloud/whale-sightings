@@ -960,6 +960,8 @@ This project is being built in stages:
     (`flutter_appauth`). **Done**: live-sync via Server-Sent Events on the same
     `GET /sightings` endpoint `client-sse/` uses (`lib/sse_client.dart`), with a hand-rolled
     reconnect loop (no native `EventSource` in Dart) — matching `client-ws/`'s own reconnect
-    precedent rather than `client-sse/app.js`'s browser-native one. NOAA nautical-chart tile
-    parity (plain OpenStreetMap tiles for now), Android support, and physical-device support
-    (Simulator-only currently) remain intentional follow-ons.
+    precedent rather than `client-sse/app.js`'s browser-native one. Android support and
+    physical-device support (Simulator-only currently) remain intentional follow-ons. NOAA
+    tile parity is no longer a goal — the web clients themselves default to OpenStreetMap now
+    too (with NOAA as an opt-in toggle), since NOAA's coverage gap (e.g. no nautical charts
+    anywhere near Dallas, TX) applies equally here.
