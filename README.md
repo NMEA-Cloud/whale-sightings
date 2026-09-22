@@ -111,7 +111,12 @@ Hydra and the service identify themselves as `auth.dev.whale-auth.org` and
 `api.dev.whale-sightings.org` respectively (not `localhost`) — this is what
 `scripts/setup-tls.sh` issues certs for by default. Since these aren't real public DNS names,
 the infra project runs a `dns` service (dnsmasq — see `dnsmasq/whale-sightings.conf` for the
-actual records) that answers for them and forwards everything else upstream normally. Point
+actual records) that answers for them and forwards everything else upstream normally. Those
+records point at `127.0.0.1` by default, correct for a single machine running both the infra
+project and its clients; a LAN client that isn't that machine (e.g. a physical
+`client-mobile` device — see that client's README) instead needs those records changed to
+the real LAN IP of whichever machine is currently running the infra project, and needs its
+own DNS pointed at that same IP. Point
 your machine's resolver at it — on macOS, a scoped resolver (so only these two domains go
 through it, not all DNS on the machine) via `/etc/resolver/`:
 
@@ -960,8 +965,12 @@ This project is being built in stages:
     (`flutter_appauth`). **Done**: live-sync via Server-Sent Events on the same
     `GET /sightings` endpoint `client-sse/` uses (`lib/sse_client.dart`), with a hand-rolled
     reconnect loop (no native `EventSource` in Dart) — matching `client-ws/`'s own reconnect
-    precedent rather than `client-sse/app.js`'s browser-native one. Android support and
-    physical-device support (Simulator-only currently) remain intentional follow-ons. NOAA
+    precedent rather than `client-sse/app.js`'s browser-native one. **Physical-device
+    support**: code path ready (`apiBase` uses `api.dev.whale-sightings.org`, not
+    `localhost`, so it's identical to the Simulator's — see `client-mobile/README.md`'s
+    "Physical-device support" section for the extra on-device DNS/cert-trust setup it
+    needs), but not yet verified end-to-end — pending an infra host change. Android support
+    remains an intentional follow-on. NOAA
     tile parity is no longer a goal — the web clients themselves default to OpenStreetMap now
     too (with NOAA as an opt-in toggle), since NOAA's coverage gap (e.g. no nautical charts
     anywhere near Dallas, TX) applies equally here.
