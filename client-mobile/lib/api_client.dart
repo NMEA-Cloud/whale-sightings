@@ -1,8 +1,13 @@
 // Hardcoded, not a config-file/env-var indirection like the web clients' config.js —
 // that mechanism exists because those clients are built once into a Docker image and need
 // runtime reconfiguration without a rebuild. A flutter run/Xcode-launched app doesn't have
-// that constraint. Revisit if a later branch needs to point at a non-localhost backend (e.g.
-// a physical device over LAN — deliberately out of scope for this Simulator-only branch).
+// that constraint. Uses the dev hostname (not localhost) so the same apiBase works from both
+// the iOS Simulator and a physical device on the LAN — this hostname is already covered by
+// the TLS cert's fixed SANs (see scripts/setup-tls.sh) and mirrors auth.dart's own issuer
+// hostname (auth.dev.whale-auth.org), which was already proven working from the Simulator.
+// A physical device additionally needs the LAN's DNS to resolve this hostname to the right
+// machine and the device to trust the CA root — see client-mobile/README.md's
+// "Physical-device support" section.
 import "dart:convert";
 
 import "package:http/http.dart" as http;
@@ -10,7 +15,7 @@ import "package:http/http.dart" as http;
 import "auth.dart" as auth;
 import "sighting.dart";
 
-const String apiBase = "https://localhost:8000";
+const String apiBase = "https://api.dev.whale-sightings.org:8000";
 
 /// Thrown by deleteSighting() when there's no token, or the server rejects the one held —
 /// callers should trigger auth.login() and let the user retry, not retry automatically
