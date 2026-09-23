@@ -90,6 +90,15 @@ step ca certificate localhost certs/localhost.pem certs/localhost-key.pem \
 # verification.
 cp ~/.step/certs/root_ca.crt certs/rootCA.pem
 
+# step writes these 600 (owner-only) by default. Several containers (mosquitto in particular)
+# read them as a non-root in-container user — Docker Desktop's bind-mount layer on macOS
+# quietly tolerates the UID mismatch, but native Linux enforces host permission bits exactly,
+# so a 600 file owned by the host user fails with "Permission denied" inside those
+# containers. Same accepted-tradeoff posture as this repo's other local-dev-only secrets
+# (DOCKER_STEPCA_INIT_PASSWORD, the cert-renewer Docker-socket mount, etc.) — the private key
+# here only protects against someone who can already reach this machine.
+chmod 644 certs/*.pem
+
 # Restart the four containers that read certs/*.pem once at startup and never watch the file
 # afterward, plus cert-renewer itself — its own renewal-timing state was computed from
 # whatever cert was on disk when *it* last started, so restart it too rather than relying on

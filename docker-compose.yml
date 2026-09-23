@@ -174,7 +174,11 @@ services:
     ports:
       - "8080:8080"
     environment:
-      API_BASE: https://localhost:8000
+      # The dev hostname, not localhost: these five clients' JS runs in whatever browser opens
+      # them, which may not be the machine serving them (e.g. the Pi serving these containers,
+      # opened from a laptop on the same LAN) — "localhost" there would mean the browser's own
+      # machine, not this one. Same fix as client-mobile/lib/api_client.dart's apiBase.
+      API_BASE: https://api.dev.whale-sightings.org:8000
 
   client-mqtt:
     build:
@@ -183,8 +187,8 @@ services:
     ports:
       - "8081:8081"
     environment:
-      API_BASE: https://localhost:8000
-      MQTT_WS_URL: wss://localhost:9001
+      API_BASE: https://api.dev.whale-sightings.org:8000
+      MQTT_WS_URL: wss://api.dev.whale-sightings.org:9001
 
   client-long-poll:
     build:
@@ -193,7 +197,7 @@ services:
     ports:
       - "8082:8082"
     environment:
-      API_BASE: https://localhost:8000
+      API_BASE: https://api.dev.whale-sightings.org:8000
 
   client-ws:
     build:
@@ -202,8 +206,8 @@ services:
     ports:
       - "8083:8083"
     environment:
-      API_BASE: https://localhost:8000
-      WS_URL: wss://localhost:8000/sightings/ws
+      API_BASE: https://api.dev.whale-sightings.org:8000
+      WS_URL: wss://api.dev.whale-sightings.org:8000/sightings/ws
 
   client-sse:
     build:
@@ -212,7 +216,7 @@ services:
     ports:
       - "8084:8084"
     environment:
-      API_BASE: https://localhost:8000
+      API_BASE: https://api.dev.whale-sightings.org:8000
 
 networks:
   whale-sightings-net:
