@@ -116,7 +116,11 @@ records point at `127.0.0.1` by default, correct for a single machine running bo
 project and its clients; a LAN client that isn't that machine (e.g. a physical
 `client-mobile` device — see that client's README) instead needs those records changed to
 the real LAN IP of whichever machine is currently running the infra project, and needs its
-own DNS pointed at that same IP. Point
+own DNS pointed at that same IP. On the machine running the infra project, use
+`scripts/update-lan-dns.sh` to set those records to its current LAN IP rather than
+hand-editing them — safe to re-run any time that IP changes (new network, DHCP lease
+renewal), which is expected to happen routinely for a machine that travels (e.g. the
+trade-show Raspberry Pi). Point
 your machine's resolver at it — on macOS, a scoped resolver (so only these two domains go
 through it, not all DNS on the machine) via `/etc/resolver/`:
 
