@@ -43,11 +43,11 @@ the service is intended to eventually deploy to AWS.
 | 8883 | `mqtt` | localhost | app | MQTT, TLS required (`mqtts`) |
 | 9001 | `mqtt` | localhost | app | MQTT over WebSockets |
 | 8000 | `service` | api.dev.whale-sightings.org | app | HTTPS (FastAPI) — also reachable at localhost:8000 |
-| 8080 | `client-admin` | localhost | app | HTTP |
-| 8081 | `client-mqtt` | localhost | app | HTTP |
-| 8082 | `client-long-poll` | localhost | app | HTTP |
-| 8083 | `client-ws` | localhost | app | HTTP |
-| 8084 | `client-sse` | localhost | app | HTTP |
+| 8080 | `client-admin` | localhost | app | HTTPS |
+| 8081 | `client-mqtt` | localhost | app | HTTPS |
+| 8082 | `client-long-poll` | localhost | app | HTTPS |
+| 8083 | `client-ws` | localhost | app | HTTPS |
+| 8084 | `client-sse` | localhost | app | HTTPS |
 | 9100 | `whale-alert-mock` | localhost | app | HTTP, opt-in (`whale-alert-mock` profile — see "Whale Alert connector") |
 | 9000 | `step-ca` | localhost | infra | HTTPS (CA API) |
 | 53 | `dns` | localhost | infra | DNS, tcp + udp |
@@ -229,15 +229,18 @@ how you're running the service:
   `CORS_ORIGINS` in your `.env` file instead.
 
 Either way, add the remote client's actual origin (scheme + host + port it's served from),
-e.g. `http://192.168.1.23:8080` or, using a resolvable hostname as set up above,
-`http://whale-service.local:8080`, as an extra comma-separated entry alongside the existing
-`http://localhost:8080,http://localhost:8081,http://localhost:8082,http://localhost:8083,http://localhost:8084`. If you're running the
+e.g. `https://192.168.1.23:8080` or, using a resolvable hostname as set up above,
+`https://whale-service.local:8080`, as an extra comma-separated entry alongside the existing
+`https://localhost:8080,https://localhost:8081,https://localhost:8082,https://localhost:8083,https://localhost:8084`
+(`https://`, not `http://` — these five clients are themselves served over HTTPS, using the
+same shared cert as everything else, since Geolocation requires a secure context once
+they're opened over anything but localhost). If you're running the
 service via Docker, remember it needs a rebuild (`docker compose up --build`) to pick up
 the change, same as any other edit to `docker-compose.yml`.
 
 **Hostname case gotcha:** browsers always send the `Origin` header lowercased, but
 `CORS_ORIGINS` is matched with an exact, case-sensitive string comparison — so an entry
-like `http://Whale-Service.local:8080` (e.g. pasted straight from `scutil --get
+like `https://Whale-Service.local:8080` (e.g. pasted straight from `scutil --get
 LocalHostName` on macOS, which capitalizes it) will never match and every request gets
 silently rejected. The failure is confusing because it doesn't look like a CORS error: the
 service logs a normal `200`, but the browser blocks the response before it reaches your
@@ -250,7 +253,7 @@ machine's IP, set `CORS_ORIGIN_REGEX` instead (or in addition) — it's matched 
 `Origin` header alongside `CORS_ORIGINS`, e.g.:
 
 ```
-CORS_ORIGIN_REGEX=^http://192\.168\.0\.\d{1,3}:(8080|8081|8082|8083|8084)$
+CORS_ORIGIN_REGEX=^https://192\.168\.0\.\d{1,3}:(8080|8081|8082|8083|8084)$
 ```
 
 ## Running the service
@@ -407,13 +410,18 @@ reuses `GET /sightings` itself, so there's no second URL to template in.
 `cd client-mqtt && python3 -m http.server 8081`, etc. `client-mqtt`/`client-long-poll`/
 `client-ws`/`client-sse` need `shared/sightings-shared.js` copied alongside `index.html` first,
 since that normally happens at Docker build time; without a `config.js` created by hand from
-`config.example.js`, `app.js` falls back to its hardcoded `localhost` defaults.)
+`config.example.js`, `app.js` falls back to its hardcoded `localhost` defaults. This shortcut
+serves plain HTTP, unlike the real Docker-built containers — fine for `localhost`, which
+browsers treat as a secure context regardless of scheme, but Geolocation silently stops
+working if you open a directly-run client via anything else, e.g. a LAN IP while testing that.)
 
 ### The MQTT client
 
-Open http://localhost:8081. The form auto-fills location/time via the browser Geolocation API
-(`http://localhost` is treated as a secure context, so this works without HTTPS locally — AWS
-deployment will need HTTPS for Geolocation to keep working).
+Open https://localhost:8081. The form auto-fills location/time via the browser Geolocation
+API — this needs a secure context, which is why these clients are served over HTTPS (using
+the same shared step-ca-issued cert as everything else in this project) rather than plain
+HTTP; `localhost` specifically would work either way (browsers treat it as secure regardless
+of scheme), but opening a client via a LAN hostname or IP would not.
 
 The list of sightings can be filtered to the last N hours and/or to within a radius (in
 nautical miles) of a point — "Use current location" fills in the radius filter's
@@ -428,7 +436,7 @@ current filtered query on each notification. The manual Refresh button still wor
 
 ### Try the live sync
 
-Open `http://localhost:8081` in three browser tabs (or windows), each running the same
+Open `https://localhost:8081` in three browser tabs (or windows), each running the same
 client. Submit a sighting in one tab — the other two update their table, count, and map
 automatically within moments, with no manual refresh. Deleting a sighting in any tab
 updates the others the same way. Filters set in a tab (time window / radius) are still
@@ -441,7 +449,7 @@ live-updated by repeatedly calling `GET /sightings/poll` instead of subscribing 
 persistent connection, no broker — see the endpoint's docstring in
 `service/app/routers/sightings.py` for how the long-held request itself works.
 
-Open http://localhost:8082. Open your browser's Network tab and watch: each
+Open https://localhost:8082. Open your browser's Network tab and watch: each
 `GET /sightings/poll` request stays pending for up to 25 seconds, resolving either with a
 match (as soon as one exists) or `204` on timeout — either way, the client immediately issues
 the next one. No WebSocket connection appears, unlike the MQTT client's tab.
@@ -454,7 +462,7 @@ A third live-sync mechanism: a direct WebSocket connection to the service itself
 which depends on the Mosquitto broker to relay events. Same report/lookup/filter/map features
 as the other two.
 
-Open http://localhost:8083. Both `created` and `deleted` events push immediately, same as the
+Open https://localhost:8083. Both `created` and `deleted` events push immediately, same as the
 MQTT client and, since `GET /sightings/poll` now reports both, the long-poll client too.
 One real difference worth noting in the code: the native WebSocket API (unlike the `mqtt.js`
 library the MQTT client uses) doesn't reconnect on its own after a dropped connection —
@@ -470,7 +478,7 @@ browser's `EventSource` API does automatically) switches it to a live push strea
 a new URL (see `service/app/routers/sightings.py`'s `list_sightings` and `app/sse.py`'s
 `ConnectionSseBroadcaster`). No broker, and no dedicated WebSocket upgrade either.
 
-Open http://localhost:8084. In DevTools' Network tab, the connection shows as a single
+Open https://localhost:8084. In DevTools' Network tab, the connection shows as a single
 long-lived request of type `eventsource` to `/sightings` — the same URL every other client
 hits for its snapshot, distinguishable only by its `Accept` header and response
 `Content-Type`. Both `created` and `deleted` events (and `updated`) push immediately, same as
@@ -481,9 +489,9 @@ all, the flip side of the WebSocket client's own tradeoff.
 
 ### Try the live sync, across all four clients
 
-Open the MQTT client (`http://localhost:8081`), the long-poll client
-(`http://localhost:8082`), the WebSocket client (`http://localhost:8083`), and the SSE client
-(`http://localhost:8084`) side by side. Submit a sighting in any one — it appears in all four,
+Open the MQTT client (`https://localhost:8081`), the long-poll client
+(`https://localhost:8082`), the WebSocket client (`https://localhost:8083`), and the SSE client
+(`https://localhost:8084`) side by side. Submit a sighting in any one — it appears in all four,
 via four completely different mechanisms. Deleting works the same way in all four now too.
 This is the whole point of having all four: same API, same UI, four different ways a client
 can find out something changed.
@@ -492,7 +500,7 @@ can find out something changed.
 
 A separate static site for demo purposes: it shows sighting counts plus the oldest/newest
 sighting, lets you load canned demo data with one click, and can clear all sightings to
-reset between demos. Open http://localhost:8080. The canned scenarios live in the
+reset between demos. Open https://localhost:8080. The canned scenarios live in the
 `SCENARIOS` array in `client-admin/app.js` — edit or add to them for your own demo needs.
 
 Deleting sightings (individually or via "Clear all sightings") requires signing in — see
