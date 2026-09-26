@@ -46,6 +46,9 @@ class PahoMqttPublisher(MqttPublisher):
         logger.warning("Disconnected from MQTT broker (rc=%s)", reason_code)
 
     def publish(self, event: Event, sighting_id: str) -> None:
+        # Canonical base, unlike the WS/SSE broadcasters' per-connection links: one broker
+        # publish fans out to every subscriber, and there's no caller address to derive a
+        # reachable link from.
         payload = {"event": event, "sighting": f"{self._base_url}/sightings/{sighting_id}"}
         self._client.publish(self._topic, json.dumps(payload), qos=0)
 

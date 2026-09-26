@@ -25,11 +25,11 @@ async def lifespan(app: FastAPI):
         settings.public_api_base_url,
         settings.mqtt_ca_bundle_path,
     )
-    app.state.ws_broadcaster = ConnectionWsBroadcaster(settings.public_api_base_url)
+    app.state.ws_broadcaster = ConnectionWsBroadcaster()
     # No teardown call below (unlike mqtt_publisher.close()) — matches ws_broadcaster's own
     # existing lack of a close hook; open per-connection queues get torn down when uvicorn
     # cancels their tasks at shutdown anyway.
-    app.state.sse_broadcaster = ConnectionSseBroadcaster(settings.public_api_base_url)
+    app.state.sse_broadcaster = ConnectionSseBroadcaster()
     app.state.jwks_client = build_jwks_client(settings)
     yield
     client.close()

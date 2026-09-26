@@ -81,10 +81,9 @@ def test_sse_client_receives_created_and_deleted_events(store, mqtt_publisher):
 
             create_response = client.post(f"{base_url}/sightings", json=sample_payload_dict())
             body = create_response.json()
-            # The broadcaster builds links from settings.public_api_base_url (a fixed
-            # default), not from this request's own base_url — matches
-            # test_sightings_ws.py's identical hardcoded expectation.
-            resource_url = f"https://localhost:8000/sightings/{body['id']}"
+            # Built from this stream request's own base URL (the real server's address),
+            # not the canonical PUBLIC_API_BASE_URL — see ConnectionSseBroadcaster.
+            resource_url = f"{base_url}/sightings/{body['id']}"
             assert next(lines) == f"data: {json.dumps({'event': 'created', 'sighting': resource_url})}"
             assert next(lines) == ""
 

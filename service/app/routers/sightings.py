@@ -105,7 +105,7 @@ def list_sightings(
     # what to do, typically refetching its own filtered view via a normal GET.
     if "text/event-stream" in request.headers.get("accept", ""):
         return StreamingResponse(
-            sse.event_stream(),
+            sse.event_stream(str(request.base_url)),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache"},
         )

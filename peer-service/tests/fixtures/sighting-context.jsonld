@@ -1,0 +1,48 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "@vocab": "https://whale-sightings.org/ns#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "created_at": {
+      "@type": "xsd:dateTime"
+    },
+    "deleted_at": {
+      "@type": "xsd:dateTime"
+    },
+    "datetime": {
+      "@type": "xsd:dateTime"
+    },
+    "coordinates": {
+      "@type": "@json"
+    },
+    "species_uri": {
+      "@type": "@id"
+    },
+    "images": {
+      "@type": "@id"
+    },
+    "_links": {
+      "@type": "@json"
+    },
+    "sighting": {
+      "@context": {
+        "type": "animalType"
+      }
+    },
+    "geometry": {
+      "@context": {
+        "type": "geometryType"
+      }
+    },
+    "source": {
+      "@context": {
+        "type": "sourceType"
+      }
+    },
+    "observer": {
+      "@context": {
+        "id": "@id"
+      }
+    }
+  }
+}

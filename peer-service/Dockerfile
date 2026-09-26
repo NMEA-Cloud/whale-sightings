@@ -7,6 +7,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py route.py config.py ./
+# Every top-level module, so a new one can't be silently left out of the image (tests/ is
+# excluded by .dockerignore).
+COPY *.py ./
 
 CMD ["python", "-u", "main.py"]

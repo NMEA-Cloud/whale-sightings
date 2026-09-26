@@ -25,11 +25,17 @@ class ConnectionWsBroadcaster(WsBroadcaster):
     independent of both the MQTT publish path and /sightings/poll (see that endpoint's
     docstring) — a third, self-contained example of a live-sync mechanism, this one
     demonstrating direct push with no pub/sub infrastructure needed.
+
+    Each event's `sighting` link is built from that connection's own address, not the
+    canonical PUBLIC_API_BASE_URL — it's a link a consumer is meant to follow, so it follows
+    the same rule as `_links` (see discovery.py): reachable by the caller that received it.
+    A same-host peer on the Docker-internal `service` hostname can't resolve the canonical
+    one. The sighting's identity (its `@id`) stays canonical in the resource itself.
     """
 
-    def __init__(self, base_url: str) -> None:
-        self._base_url = base_url.rstrip("/")
-        self._connections: set[WebSocket] = set()
+    def __init__(self) -> None:
+        # connection -> the HTTP(S) base it connected through, e.g. "https://service:8000"
+        self._connections: dict[WebSocket, str] = {}
         # connect()/disconnect() run directly on the event loop (the /sightings/ws route is
         # async def), but broadcast() is called from create_sighting/delete_sighting, which
         # are sync def and run in Starlette's threadpool — a different thread, not the event
@@ -40,24 +46,35 @@ class ConnectionWsBroadcaster(WsBroadcaster):
 
     async def connect(self, websocket: WebSocket) -> None:
         await websocket.accept()
-        self._connections.add(websocket)
+        self._connections[websocket] = http_base_url(str(websocket.base_url))
 
     def disconnect(self, websocket: WebSocket) -> None:
-        self._connections.discard(websocket)
+        self._connections.pop(websocket, None)
 
     def broadcast(self, event: Event, sighting_id: str) -> None:
-        payload = json.dumps({"event": event, "sighting": f"{self._base_url}/sightings/{sighting_id}"})
-        asyncio.run_coroutine_threadsafe(self._broadcast_async(payload), self._loop)
+        asyncio.run_coroutine_threadsafe(self._broadcast_async(event, sighting_id), self._loop)
 
-    async def _broadcast_async(self, payload: str) -> None:
+    async def _broadcast_async(self, event: Event, sighting_id: str) -> None:
         dead = []
-        for connection in list(self._connections):
+        for connection, base in list(self._connections.items()):
+            payload = json.dumps({"event": event, "sighting": f"{base}/sightings/{sighting_id}"})
             try:
                 await connection.send_text(payload)
             except Exception:
                 dead.append(connection)
         for connection in dead:
-            self._connections.discard(connection)
+            self._connections.pop(connection, None)
+
+
+def http_base_url(ws_base_url: str) -> str:
+    """wss://host/ -> https://host (or ws -> http): the address a WebSocket client connected
+    through, as the HTTP base its sighting links need."""
+    base = ws_base_url.rstrip("/")
+    if base.startswith("wss://"):
+        return "https://" + base[len("wss://") :]
+    if base.startswith("ws://"):
+        return "http://" + base[len("ws://") :]
+    return base
 
 
 def origin_allowed(origin: str | None, cors_origin_list: list[str], cors_origin_regex: str | None) -> bool:

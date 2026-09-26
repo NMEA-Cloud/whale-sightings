@@ -517,6 +517,12 @@ A third live-sync mechanism: a direct WebSocket connection to the service itself
 which depends on the Mosquitto broker to relay events. Same report/lookup/filter/map features
 as the other two.
 
+Each event is `{"event": ..., "sighting": <link>}`. The link is built from the address that
+connection used (the same rule as `_links` — see "JSON-LD" under "Data model"), so a peer
+connected via the Docker-internal `service` hostname gets links it can actually follow. The
+SSE stream does the same per subscriber; MQTT events use the canonical
+`PUBLIC_API_BASE_URL`, since a broker publish has no caller address to build from.
+
 Open https://localhost:8083. Both `created` and `deleted` events push immediately, same as the
 MQTT client and, since `GET /sightings/poll` now reports both, the long-poll client too.
 One real difference worth noting in the code: the native WebSocket API (unlike the `mqtt.js`
@@ -807,11 +813,25 @@ It then runs two things at once:
   `source.type: "peer"` and `source.peer_id` purely from the bearer token's own claims (see
   "Whale Alert connector" above for the same anti-spoofing pattern), so peer-service can't
   self-declare an identity any more than the Whale Alert connector can.
-- **Subscribes to live-sync** (the same WebSocket `client-ws` uses) and logs every
+- **Subscribes to live-sync** (the same WebSocket `client-ws` uses) and handles every
   `created`/`updated`/`deleted` event it receives — including its own posted sightings,
   since the broadcaster doesn't exclude the connection that caused the event. Reconnects on
   a dropped connection with a fixed delay, mirroring `client-ws/app.js`'s own hand-rolled
   reconnect exactly.
+- **Reads each sighting as linked data.** For a `created`/`updated` event it follows the
+  event's link, expands the response with a JSON-LD processor (pyld), and logs what it
+  understood:
+
+  ```
+  Understood created https://api.dev.whale-sightings.org:8000/sightings/<uuid>: Orcinus orca (urn:lsid:marinespecies.org:taxname:137102), source=peer, at (32.8050, -96.4950), observed 2026-09-26T23:05:55.256914Z
+  ```
+
+  `peer-service/linked_data.py` reads the expanded form **by IRI only** — never by the
+  service's JSON key names — so the service could rename any key (changing only its
+  `@context`) and peer-service would still understand the data; `tests/test_linked_data.py`
+  demonstrates exactly that. The link it fetched is reachable from inside Docker
+  (`https://service:8000/...`), while the id it logs is the sighting's canonical `@id`. The
+  `@context` is fetched once and cached. `deleted` events are logged without a fetch.
 
 No FastAPI, no host port — its container logs are the demo surface
 (`docker compose logs -f peer-service`). It's opt-in, like `whale-alert-connector` and
@@ -1035,6 +1055,13 @@ with `coordinates` as an `@json` value; the N-Quads tab shows them as one `rdf:J
 literal. Delete the `"@context"` line from the pasted input to see what the responses looked
 like before this: nearly everything disappears.
 
+To see a second system consuming it, watch peer-service interpret each new sighting (see
+"peer-service" above):
+
+```bash
+docker logs -f whale-sightings-peer-service-1 2>&1 | grep Understood
+```
+
 "Hydra" elsewhere in this repo always means Ory Hydra, the OAuth2 server — not the W3C
 Hydra Core hypermedia vocabulary, which this API doesn't use.
 
@@ -1103,7 +1130,8 @@ This project is being built in stages:
     broker-mediated push, `client-long-poll/`'s pull-based polling, and `client-ws/`'s direct
     WebSocket push — no broker, no dedicated upgrade handshake, and (unlike `client-ws/app.js`)
     no hand-rolled reconnect logic, since `EventSource` reconnects on its own. Reuses the
-    exact same `{event, sighting: <link>}` payload already published to MQTT/WS, per
+    same `{event, sighting: <link>}` payload shape already published to MQTT/WS (links
+    later made per-connection for WS/SSE — see "The WebSocket client"), per
     conversation with a collaborator who prefers lightweight notifications over embedding full
     records. Reflects creates, updates, and deletes live, same as the other three.
 13. **Done**: `client-mobile/`, a native iOS Flutter client — report + view with
@@ -1132,3 +1160,8 @@ This project is being built in stages:
     Alert records to a Whale Alert-side IRI, a `species_id` → WoRMS lookup in the connector,
     and describing operations (method/expected body) as linked data rather than HAL
     extensions.
+15. **Done**: peer-service consumes sightings as linked data — it follows each live-sync
+    event's link, expands the response with pyld, and logs what it understood, reading by
+    IRI rather than by JSON key name. To make those links followable from inside Docker,
+    WebSocket/SSE event links are now built per connection (MQTT's stay canonical).
+    Follow-ons: compacting into a peer-owned vocabulary, and dereferencing the WoRMS taxon IRI.

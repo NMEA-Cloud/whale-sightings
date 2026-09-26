@@ -1,9 +1,11 @@
-"""peer-service: demonstrates HATEOAS discovery and JSON-LD-flavored data from a second,
+"""peer-service: demonstrates HATEOAS discovery and JSON-LD data from a second,
 independent system's point of view. On startup it discovers the whale-sightings service's
 own capabilities from its root document instead of hardcoding endpoint paths, then runs two
 concurrent loops: one generating sightings for a simulated moving pod along a fixed route,
 the other staying subscribed to the service's live-sync WebSocket so it sees every other
-create/update/delete happening on the service too — not just its own.
+create/update/delete happening on the service too — not just its own. For each created or
+updated sighting it follows the event's link, expands the response as JSON-LD, and logs
+what it understood — reading it by IRI, not by JSON key name (see linked_data.py).
 
 No FastAPI, no host port — this container's logs are the demo surface. Runnable standalone
 on a second machine as well as via docker-compose.yml; see the README's "peer-service"
@@ -13,6 +15,7 @@ section for how.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import ssl
 import time
@@ -21,8 +24,10 @@ from urllib.parse import urlparse, urlunparse
 
 import httpx
 import websockets
+from pyld import jsonld
 
 import config
+from linked_data import CachingContextLoader, summarize
 from route import ROUTES, interpolate
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -202,11 +207,53 @@ async def generate_sightings(client: httpx.AsyncClient, token_client: PeerTokenC
         await asyncio.sleep(config.GENERATE_INTERVAL_SECONDS)
 
 
-async def subscribe_live_sync(ws_url: str) -> None:
+async def handle_event(message: str, client: httpx.AsyncClient, loader: CachingContextLoader) -> None:
+    """Follows a created/updated event's link to the sighting, expands the response as
+    JSON-LD, and logs what it understood. The fetched link is whatever the event carried —
+    built from the address this process connected through, so it's reachable here — while
+    the logged id is the sighting's canonical @id from the response itself. Any failure is
+    logged and swallowed: one bad event must never end the live-sync subscription."""
+    try:
+        event = json.loads(message)
+        kind, link = event["event"], event["sighting"]
+    except (ValueError, KeyError, TypeError):
+        logger.warning("Unrecognized live-sync message: %s", message)
+        return
+
+    if kind == "deleted":
+        # Nothing left to fetch — the resource is gone.
+        logger.info("Live-sync: deleted %s", link)
+        return
+
+    try:
+        response = await client.get(link, headers={"Accept": "application/ld+json"})
+        response.raise_for_status()
+        # pyld is synchronous, and its loader may block on the first @context fetch.
+        expanded = await asyncio.to_thread(jsonld.expand, response.json(), {"documentLoader": loader})
+        summary = summarize(expanded)
+    except (httpx.HTTPError, jsonld.JsonLdError, ValueError) as exc:
+        logger.warning("Couldn't understand %s event for %s: %s", kind, link, exc)
+        return
+
+    lon, lat = summary["position"] or (float("nan"), float("nan"))
+    logger.info(
+        "Understood %s %s: %s (%s), source=%s, at (%.4f, %.4f), observed %s",
+        kind,
+        summary["id"],
+        summary["species"],
+        summary["taxon"] or "no taxon IRI",
+        summary["origin"],
+        lat,
+        lon,
+        summary["observed_at"],
+    )
+
+
+async def subscribe_live_sync(ws_url: str, client: httpx.AsyncClient, loader: CachingContextLoader) -> None:
     """Stays connected to the service's live-sync WebSocket for as long as this process
-    runs, logging every created/updated/deleted event it receives — including this same
-    process's own posted sightings, since the broadcaster doesn't exclude the connection
-    that caused the event. Reconnects on drop with a fixed delay (see
+    runs, handling every created/updated/deleted event it receives (see handle_event) —
+    including this same process's own posted sightings, since the broadcaster doesn't
+    exclude the connection that caused the event. Reconnects on drop with a fixed delay (see
     WS_RECONNECT_DELAY_SECONDS), mirroring client-ws/app.js's hand-rolled reconnect exactly,
     since neither the native WebSocket API nor the `websockets` library reconnects on its
     own."""
@@ -216,7 +263,7 @@ async def subscribe_live_sync(ws_url: str) -> None:
             async with websockets.connect(ws_url, ssl=ssl_context) as ws:
                 logger.info("Connected to live-sync at %s", ws_url)
                 async for message in ws:
-                    logger.info("Live-sync event: %s", message)
+                    await handle_event(message, client, loader)
         except Exception:
             logger.exception("Live-sync connection dropped")
         await asyncio.sleep(config.WS_RECONNECT_DELAY_SECONDS)
@@ -235,11 +282,22 @@ async def main() -> None:
             scope=discovered["create_scope"],
         )
 
-        async with httpx.AsyncClient(verify=verify) as async_client:
-            await asyncio.gather(
-                generate_sightings(async_client, token_client, discovered["create"]),
-                subscribe_live_sync(discovered["live_sync"]),
-            )
+        # A separate sync client for @context fetches: those run in a worker thread (see
+        # handle_event), while sync_client is used on the event loop by token_client.
+        with httpx.Client(verify=verify) as context_client:
+
+            def fetch_context(url: str) -> dict:
+                response = context_client.get(url, headers={"Accept": "application/ld+json"})
+                response.raise_for_status()
+                return response.json()
+
+            loader = CachingContextLoader(fetch_context)
+
+            async with httpx.AsyncClient(verify=verify) as async_client:
+                await asyncio.gather(
+                    generate_sightings(async_client, token_client, discovered["create"]),
+                    subscribe_live_sync(discovered["live_sync"], async_client, loader),
+                )
 
 
 if __name__ == "__main__":
