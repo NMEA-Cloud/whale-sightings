@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-NS = "https://whale-sightings.org/ns#"
+NS = "https://schema.nmea.org/whale-sightings#"
 
 
 def first(node: dict[str, Any] | None, iri: str) -> dict[str, Any] | None:
