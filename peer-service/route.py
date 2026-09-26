@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import bisect
 import math
+import random
 
 Waypoint = tuple[float, float]  # (lat, lon)
 
@@ -164,3 +165,29 @@ def interpolate(waypoints: list[Waypoint], t: float) -> Waypoint:
     lat1, lon1 = waypoints[i]
     lat2, lon2 = waypoints[(i + 1) % n]
     return (lat1 + (lat2 - lat1) * local_frac, lon1 + (lon2 - lon1) * local_frac)
+
+
+METERS_PER_DEGREE_LAT = 111_320.0
+
+
+def jitter(point: Waypoint, max_meters: float, rng: random.Random) -> Waypoint:
+    """A point picked uniformly at random within `max_meters` of `point` — so repeated laps
+    of a deterministic route (and restarts, which begin again at t=0) don't post sightings
+    at exactly the same coordinates, stacking map pins on top of each other.
+
+    The route's waypoints and the straight segments between them were hand-checked to stay
+    in open water (see the route comments above), but this moves a point sideways off that
+    line — so `max_meters` must stay well under the narrowest channel's clearance from shore.
+
+    Flat-earth meters-to-degrees conversion, same approximation _distance() uses — plenty
+    good at tens of meters. `max_meters <= 0` disables it. `rng` is injected so tests can be
+    deterministic."""
+    if max_meters <= 0:
+        return point
+    lat, lon = point
+    # sqrt keeps points evenly spread over the disk's area rather than bunched at its center.
+    r = max_meters * math.sqrt(rng.random())
+    theta = 2 * math.pi * rng.random()
+    dlat = (r * math.sin(theta)) / METERS_PER_DEGREE_LAT
+    dlon = (r * math.cos(theta)) / (METERS_PER_DEGREE_LAT * math.cos(math.radians(lat)))
+    return (lat + dlat, lon + dlon)

@@ -41,6 +41,12 @@ GENERATE_INTERVAL_SECONDS = float(os.environ.get("GENERATE_INTERVAL_SECONDS", "3
 # resolution of this into WAYPOINTS. "puget-sound" (the original) or "rockwall-tx" (the
 # trade-show venue's local lake, Lake Ray Hubbard) — see README's "Location profiles".
 LOCATION_PROFILE = os.environ.get("LOCATION_PROFILE", "puget-sound")
+# Max random offset, in meters, applied to each posted sighting's position (route.py's
+# jitter()). Without it the route is fully deterministic: every lap, and every restart,
+# posts at exactly the same coordinates, stacking map pins on top of each other. Must stay
+# well under the route's narrowest clearance from shore — see route.py. 0 disables it.
+JITTER_METERS = float(os.environ.get("JITTER_METERS", "40"))
+
 # Fixed-delay reconnect (not exponential backoff) — mirrors client-ws/app.js's own
 # hand-rolled WebSocket reconnect exactly, since the native WebSocket API (and the
 # `websockets` library used here) doesn't reconnect on its own after a dropped connection.
