@@ -7,7 +7,7 @@ from redis import Redis
 from app.auth import build_jwks_client
 from app.config import get_settings
 from app.mqtt import PahoMqttPublisher
-from app.routers import health, sightings, well_known
+from app.routers import contexts, health, sightings, well_known
 from app.sse import ConnectionSseBroadcaster
 from app.store.valkey_store import ValkeySightingStore
 from app.ws import ConnectionWsBroadcaster
@@ -54,6 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(sightings.router)
     app.include_router(well_known.router)
+    app.include_router(contexts.router)
 
     return app
 
