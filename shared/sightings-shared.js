@@ -49,6 +49,12 @@ const DEFAULT_MAP_ZOOM = 9;
 let map;
 let markersLayer;
 
+// Only the very first time sightings load should the map auto-fit to them — after that,
+// re-fitting on every live-sync update (a peer-service pod posts one every 30s) yanks a
+// zoomed-in user's view back out from under them. A manual "Center map" button (see
+// RecenterControl below) covers re-fitting on demand instead.
+let hasAutoFitted = false;
+
 // Which lat/lon fields the next map click should fill: "form", "filter", or null while inactive.
 let pickTarget = null;
 
@@ -189,10 +195,29 @@ function initMap() {
   });
   new BasemapControl().addTo(map);
 
+  // Manual re-fit — see recenterMap()/hasAutoFitted above for why this isn't automatic on
+  // every update. Same plain-button pattern as BasemapControl, stacked below it (Leaflet
+  // stacks same-position controls automatically).
+  const RecenterControl = L.Control.extend({
+    options: { position: "topright" },
+    onAdd: function () {
+      const button = L.DomUtil.create("button", "leaflet-bar");
+      button.type = "button";
+      button.textContent = "Center map";
+      button.style.cssText = "padding: 6px 10px; cursor: pointer; font: inherit;";
+      L.DomEvent.disableClickPropagation(button);
+      button.addEventListener("click", recenterMap);
+      return button;
+    },
+  });
+  new RecenterControl().addTo(map);
+
   applyBasemapMode();
   map.on("moveend", updateChartOverlay);
 
-  markersLayer = L.layerGroup().addTo(map);
+  // featureGroup, not layerGroup — same API for everything else here (clearLayers, addTo),
+  // but only FeatureGroup has getBounds(), which recenterMap() needs.
+  markersLayer = L.featureGroup().addTo(map);
 
   map.on("click", (event) => {
     if (pickTarget === "form") {
@@ -246,8 +271,18 @@ function updateMapMarkers(records) {
       .addTo(markersLayer);
   }
 
-  if (points.length > 0) {
+  if (points.length > 0 && !hasAutoFitted) {
     map.fitBounds(points, { padding: [20, 20], maxZoom: 14 });
+    hasAutoFitted = true;
+  }
+}
+
+// Re-fits the map to whatever's currently shown, on demand — see the "Center map" button
+// (RecenterControl in initMap()). Uses markersLayer's own bounds rather than re-deriving
+// points from records, since it only ever needs to match what's already on the map.
+function recenterMap() {
+  if (markersLayer.getLayers().length > 0) {
+    map.fitBounds(markersLayer.getBounds(), { padding: [20, 20], maxZoom: 14 });
   }
 }
 
