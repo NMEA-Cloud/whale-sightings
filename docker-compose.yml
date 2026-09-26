@@ -93,6 +93,10 @@ services:
       INGEST_HYDRA_AUDIENCE: https://api.dev.whale-sightings.org:8000
       VALKEY_HOST: valkey
       VALKEY_PORT: 6379
+      # Which real-world area to query Whale Alert for (WHALE_ALERT_BBOXES in
+      # service/app/ingest/config.py) — see README's "Location profiles". Same env var name
+      # as the clients/peer-service, so one LOCATION_PROFILE switches everything together.
+      LOCATION_PROFILE: puget-sound
     volumes:
       - ./certs:/certs:ro
     networks:

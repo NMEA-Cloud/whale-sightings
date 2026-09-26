@@ -418,7 +418,7 @@ working if you open a directly-run client via anything else, e.g. a LAN IP while
 ### Location profiles
 
 A `LOCATION_PROFILE` environment variable (`puget-sound`, the default, or `rockwall-tx`)
-picks which demo dataset three different pieces use, all switching together:
+picks which demo dataset four different pieces use, all switching together:
 
 - The four map clients' default center/zoom (`shared/sightings-shared.js`'s
   `LOCATION_PROFILES`) — which area the map opens on before any real sightings load.
@@ -429,11 +429,18 @@ picks which demo dataset three different pieces use, all switching together:
   hand-verified-against-OpenStreetMap waypoint route around Lake Ray Hubbard's open water,
   built the same way and to the same standard as the original Puget Sound route (see that
   file's comments).
+- The Whale Alert connector's query area (`service/app/ingest/config.py`'s
+  `WHALE_ALERT_BBOXES`) — this only changes what real-world area it *asks* Whale Alert
+  about, never fabricates data for a location that doesn't have any. Since Lake Ray Hubbard
+  is a landlocked reservoir, expect the `rockwall-tx` bbox to come back with few or no real
+  results — that's correct, not a bug, and no longer the reason to skip running the
+  connector during a `rockwall-tx` demo (it used to unavoidably show real Puget Sound
+  sightings far outside the map's default view; now it just queries the right area).
 
-Templated into `config.js` the same way as `API_BASE` — set it in `docker-compose.yml`
-(already `puget-sound` by default on all six affected services: the five static clients plus
-`peer-service`) or, for a temporary switch without touching the shared file, in your own
-gitignored `docker-compose.override.yml`:
+Templated into `config.js`/env the same way as `API_BASE` — set it in `docker-compose.yml`
+(already `puget-sound` by default on all seven affected services: the five static clients,
+`peer-service`, and `whale-alert-connector`) or, for a temporary switch without touching the
+shared file, in your own gitignored `docker-compose.override.yml`:
 
 ```yaml
 services:
@@ -455,13 +462,13 @@ services:
   peer-service:
     environment:
       LOCATION_PROFILE: rockwall-tx
+  whale-alert-connector:
+    environment:
+      LOCATION_PROFILE: rockwall-tx
 ```
 
 Restart the affected containers to pick it up — no rebuild needed, same image either way.
-Remove the override afterward to go back to the `puget-sound` default. The Whale Alert
-connector is untouched by this — it's a real third-party API filtered to the real Puget
-Sound area, and can't be relocated — so don't run `whale-alert-connector` during a
-`rockwall-tx` demo, or its sightings will show up far outside the map's default view.
+Remove the override afterward to go back to the `puget-sound` default.
 
 ### The MQTT client
 
@@ -687,10 +694,11 @@ Or as part of the full dev stack:
 ```
 
 Either way, watch its logs for a full poll cycle (`docker compose logs -f
-whale-alert-connector`); real Whale Alert sightings within `WHALE_ALERT_BBOX` (defaults to
-greater Puget Sound plus the San Juan Islands) should appear as teal pins with `Source:
-whale_alert` in any map client (see "Source-aware map pins" below), and the admin client's
-stats panel should show a non-zero Whale Alert count.
+whale-alert-connector`); real Whale Alert sightings within `WHALE_ALERT_BBOX` (derived from
+`LOCATION_PROFILE` — see "Location profiles" above; defaults to greater Puget Sound plus the
+San Juan Islands) should appear as teal pins with `Source: whale_alert` in any map client
+(see "Source-aware map pins" below), and the admin client's stats panel should show a
+non-zero Whale Alert count.
 
 ### Startup options at a glance
 

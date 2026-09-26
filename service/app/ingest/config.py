@@ -1,5 +1,17 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# west,south,east,north per profile — keyed the same way as peer-service's ROUTES and the
+# static clients' LOCATION_PROFILES, so LOCATION_PROFILE picks a consistent area everywhere.
+# "rockwall-tx" surrounds Lake Ray Hubbard with margin similar to how the puget-sound bbox
+# extends well beyond peer-service's own route — real Whale Alert reports there are expected
+# to be sparse-to-nonexistent (it's a landlocked reservoir), which is correct, not a bug: this
+# only changes what real data the connector asks for, never fabricates data for a location
+# that doesn't have any.
+WHALE_ALERT_BBOXES: dict[str, str] = {
+    "puget-sound": "-123.3,47.0,-122.0,48.8",
+    "rockwall-tx": "-96.60,32.75,-96.40,32.95",
+}
+
 
 class IngestSettings(BaseSettings):
     """Settings for the whale-alert-connector process only (see poller.py) — deliberately
@@ -15,10 +27,16 @@ class IngestSettings(BaseSettings):
     whale_alert_api_base_url: str = "https://seereportsave.org/whalealert/api/v1"
     whale_alert_client_id: str
     whale_alert_client_secret: str
-    # west,south,east,north — greater Puget Sound plus the San Juan Islands. Confirmed via a
-    # real saved example that Whale Alert's bbox is an explicit, real filter, not something
-    # applied automatically by the caller's own location.
-    whale_alert_bbox: str = "-123.3,47.0,-122.0,48.8"
+    # Which area (WHALE_ALERT_BBOXES above) to query by default — see README's "Location
+    # profiles". Same env var name as the clients/peer-service, so one LOCATION_PROFILE
+    # switches everything together.
+    location_profile: str = "puget-sound"
+    # west,south,east,north. Confirmed via a real saved example that Whale Alert's bbox is an
+    # explicit, real filter, not something applied automatically by the caller's own
+    # location. None (the default) derives it from location_profile — see
+    # get_ingest_settings() below; set this directly only to override that with a custom area
+    # neither existing profile covers.
+    whale_alert_bbox: str | None = None
     # No forward-moving cursor is possible (Whale Alert's schema has no "last modified"
     # field — see the plan's Context section), so every cycle re-scans this fixed trailing
     # window across all four statuses instead.
@@ -44,4 +62,13 @@ class IngestSettings(BaseSettings):
 
 
 def get_ingest_settings() -> IngestSettings:
-    return IngestSettings()
+    settings = IngestSettings()
+    if settings.whale_alert_bbox is None:
+        try:
+            settings.whale_alert_bbox = WHALE_ALERT_BBOXES[settings.location_profile]
+        except KeyError:
+            raise RuntimeError(
+                f"Unknown LOCATION_PROFILE {settings.location_profile!r}; expected one of "
+                f"{sorted(WHALE_ALERT_BBOXES)}"
+            ) from None
+    return settings
