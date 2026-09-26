@@ -18,7 +18,14 @@ serve:
     cors:
       enabled: true
       allowed_origins:
-        - http://localhost:8080
+        # client-admin — the only client that ever calls Hydra directly from the browser
+        # (login for delete; see triggerLogin() in client-admin/app.js). https, not http —
+        # this client has been HTTPS-only since it and its siblings started serving over TLS
+        # (see client-admin/docker-entrypoint.sh). Unlike the main service's CORS_ORIGINS,
+        # this list has no per-machine override mechanism (docker-compose.override.yml
+        # doesn't reach into this committed file) — add an entry here directly if
+        # client-admin is ever opened via a LAN hostname instead of localhost.
+        - https://localhost:8080
       allowed_methods:
         - GET
         - POST
