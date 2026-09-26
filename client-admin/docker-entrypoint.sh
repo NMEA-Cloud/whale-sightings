@@ -7,6 +7,7 @@ set -eu
 cat > /app/config.js <<EOF
 window.WHALE_SIGHTINGS_CONFIG = {
   apiBase: "${API_BASE}",
+  locationProfile: "${LOCATION_PROFILE}",
 };
 EOF
 

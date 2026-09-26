@@ -1,6 +1,6 @@
 import pytest
 
-from route import interpolate
+from route import ROUTES, interpolate
 
 # On the equator, cos(mean_lat) == 1, so distance along longitude reduces to plain
 # subtraction — makes the expected positions below easy to verify by hand. Deliberately
@@ -48,3 +48,11 @@ def test_interpolate_handles_coincident_waypoints_without_dividing_by_zero():
     # equal shares rather than raising a ZeroDivisionError.
     same_point = [(5.0, 5.0), (5.0, 5.0), (5.0, 5.0)]
     assert interpolate(same_point, 0.5) == (5.0, 5.0)
+
+
+def test_all_profiles_have_nonempty_waypoints():
+    # Purely structural — catches a forgotten placeholder or an import typo for a
+    # LOCATION_PROFILE (main.py). Real-world geography (does a route actually stay in open
+    # water) is verified by hand against OpenStreetMap, not something this can assert.
+    for name, waypoints in ROUTES.items():
+        assert waypoints, f"{name} route has no waypoints"

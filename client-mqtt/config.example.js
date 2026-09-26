@@ -4,4 +4,5 @@
 window.WHALE_SIGHTINGS_CONFIG = {
   apiBase: "https://localhost:8000",
   mqttWsUrl: "wss://localhost:9001",
+  locationProfile: "puget-sound", // or "rockwall-tx" — see shared/sightings-shared.js
 };

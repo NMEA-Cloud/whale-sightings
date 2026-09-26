@@ -35,7 +35,7 @@ Waypoint = tuple[float, float]  # (lat, lon)
 # narrowing Admiralty Inlet's entrance (routed east of them, past Fort Casey), and the Kitsap
 # Peninsula's Point No Point/Hansville tip narrowing Puget Sound's entrance (routed east of it,
 # not a direct line south from Admiralty Inlet).
-WAYPOINTS: list[Waypoint] = [
+PUGET_SOUND_WAYPOINTS: list[Waypoint] = [
     # Outbound: San Juan Islands -> Strait of Juan de Fuca -> Admiralty Inlet -> Puget Sound
     (48.516, -123.18),
     (48.513, -123.19),
@@ -58,6 +58,38 @@ WAYPOINTS: list[Waypoint] = [
     (48.20, -122.85),
     (48.35, -123.05),
 ]
+
+# A there-and-back route along Lake Ray Hubbard's western channel (Rockwall, TX — the
+# trade-show venue's local lake), same verification standard as PUGET_SOUND_WAYPOINTS above:
+# every point, and every straight segment between consecutive points, checked against
+# OpenStreetMap by hand to confirm it stays in open water. Explicitly routed around three
+# hazards a naive "up the middle of the lake" line would have hit: the I-30/US 67 causeway at
+# the lake's north end (this route starts south of it), the Chandlers Landing peninsula just
+# south of the causeway, and the Heath peninsula further south (both peninsulas jut further
+# into the lake than they first appear at a wide-zoomed-out view — confirmed the hard way,
+# same class of mistake the Puget Sound comment above describes). The south end stops well
+# clear of the Rockwall-Forney Dam rather than approaching it.
+ROCKWALL_TX_WAYPOINTS: list[Waypoint] = [
+    # Outbound: south of the I-30 causeway, down the western channel, around Heath's
+    # peninsula, to just north of the Rockwall-Forney Dam
+    (32.878, -96.495),
+    (32.870, -96.495),
+    (32.860, -96.495),
+    (32.850, -96.499),
+    (32.840, -96.515),
+    (32.805, -96.495),
+    # Return: retrace the same verified-clear channel back north
+    (32.840, -96.515),
+    (32.850, -96.499),
+    (32.860, -96.495),
+    (32.870, -96.495),
+]
+
+# Keyed by LOCATION_PROFILE (config.py) — see main.py's resolution of this into WAYPOINTS.
+ROUTES: dict[str, list[Waypoint]] = {
+    "puget-sound": PUGET_SOUND_WAYPOINTS,
+    "rockwall-tx": ROCKWALL_TX_WAYPOINTS,
+}
 
 
 def _distance(a: Waypoint, b: Waypoint) -> float:

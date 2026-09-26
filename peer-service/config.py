@@ -36,6 +36,11 @@ PEER_CLIENT_SECRET = _require_env("PEER_CLIENT_SECRET")
 HYDRA_INTERNAL_BASE_URL = os.environ.get("HYDRA_INTERNAL_BASE_URL")
 
 GENERATE_INTERVAL_SECONDS = float(os.environ.get("GENERATE_INTERVAL_SECONDS", "30"))
+
+# Which waypoint route (route.py's ROUTES) the simulated pod follows — see main.py's
+# resolution of this into WAYPOINTS. "puget-sound" (the original) or "rockwall-tx" (the
+# trade-show venue's local lake, Lake Ray Hubbard) — see README's "Location profiles".
+LOCATION_PROFILE = os.environ.get("LOCATION_PROFILE", "puget-sound")
 # Fixed-delay reconnect (not exponential backoff) — mirrors client-ws/app.js's own
 # hand-rolled WebSocket reconnect exactly, since the native WebSocket API (and the
 # `websockets` library used here) doesn't reconnect on its own after a dropped connection.

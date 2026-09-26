@@ -77,7 +77,7 @@ function buildSighting({ lon, lat, hoursAgo, status, type, species, name, method
 // Canned demo scenarios. Each entry just needs a label and a build() returning an
 // array of sighting payloads — edit this list or add your own for specific demos.
 // Coordinates are around the Puget Sound / San Juan Islands whale-watching region.
-const SCENARIOS = [
+const PUGET_SOUND_SCENARIOS = [
   {
     id: "single-recent",
     label: "Single recent sighting",
@@ -123,6 +123,63 @@ const SCENARIOS = [
     ],
   },
 ];
+
+// Same shape as PUGET_SOUND_SCENARIOS, relocated to Lake Ray Hubbard (Rockwall, TX — the
+// trade-show venue's local lake) for that demo. Real species, not fake taxonomy — the joke
+// is entirely in the location (a landlocked Texas reservoir), not the science. Coordinates
+// are drawn from peer-service/route.py's ROCKWALL_TX_WAYPOINTS, hand-verified against
+// OpenStreetMap, so these markers land in the lake's actual open water rather than on shore.
+const ROCKWALL_TX_SCENARIOS = [
+  {
+    id: "single-recent",
+    label: "Definitely a whale, probably",
+    build: () => [
+      buildSighting({
+        lon: -96.497, lat: 32.855, hoursAgo: 0,
+        status: "alive", type: "orca", species: "Orcinus orca", name: "Big Tex",
+        method: "manual-report", comments: "Witness insists it wasn't just a very large catfish. This is Lake Ray Hubbard.",
+      }),
+    ],
+  },
+  {
+    id: "pod-near-dam",
+    label: "Pod spotted near the dam",
+    build: () => [
+      buildSighting({ lon: -96.515, lat: 32.840, hoursAgo: 0.1, status: "alive", type: "orca", species: "Orcinus orca", name: "Ray", method: "manual-report", comments: "Apparently mistook I-30 traffic noise for a pod call. Heading south." }),
+      buildSighting({ lon: -96.505, lat: 32.820, hoursAgo: 0.2, status: "alive", type: "orca", species: "Orcinus orca", name: "Hubbard", method: "manual-report", comments: "Named after the lake, out of spite." }),
+      buildSighting({ lon: -96.495, lat: 32.805, hoursAgo: 0.3, status: "alive", type: "orca", species: "Orcinus orca", name: "Dallas", method: "manual-report", comments: "Getting uncomfortably close to the Rockwall-Forney Dam. Someone should mention the Pacific is the other way." }),
+    ],
+  },
+  {
+    id: "distressed-alert",
+    label: "Distressed whale alert",
+    build: () => [
+      buildSighting({
+        lon: -96.499, lat: 32.850, hoursAgo: 0,
+        status: "distressed", type: "gray whale", species: "Eschrichtius robustus", name: null,
+        method: "manual-report", comments: "1,200 miles from the nearest ocean and visibly confused about it. Rescue boat is a bass boat with good intentions.",
+      }),
+    ],
+  },
+  {
+    id: "historical-spread",
+    label: "Historical spread (past 2 weeks)",
+    build: () => [
+      buildSighting({ lon: -96.495, lat: 32.870, hoursAgo: 1, status: "alive", type: "orca", species: "Orcinus orca", name: "Ray", method: "manual-report", comments: "Within the last day, south of the I-30 causeway." }),
+      buildSighting({ lon: -96.499, lat: 32.850, hoursAgo: 30, status: "alive", type: "humpback whale", species: "Megaptera novaeangliae", name: null, method: "manual-report", comments: "Feeding near Heath. On what is unclear — there is no krill in Lake Ray Hubbard." }),
+      buildSighting({ lon: -96.515, lat: 32.840, hoursAgo: 72, status: "unknown", type: "minke whale", species: "Balaenoptera acutorostrata", name: null, method: "other", comments: "Reported by a passing pontoon boat." }),
+      buildSighting({ lon: -96.495, lat: 32.805, hoursAgo: 168, status: "alive", type: "orca", species: "Orcinus orca", name: "Hubbard", method: "manual-report", comments: "One week ago, uncomfortably close to the dam." }),
+      buildSighting({ lon: -96.495, lat: 32.878, hoursAgo: 336, status: "dead", type: "gray whale", species: "Eschrichtius robustus", name: null, method: "manual-report", comments: "Stranded two weeks ago near the I-30 causeway. Cause of death: geography." }),
+    ],
+  },
+];
+
+const SCENARIO_SETS = {
+  "puget-sound": PUGET_SOUND_SCENARIOS,
+  "rockwall-tx": ROCKWALL_TX_SCENARIOS,
+};
+const locationProfile = window.WHALE_SIGHTINGS_CONFIG?.locationProfile ?? "puget-sound";
+const SCENARIOS = SCENARIO_SETS[locationProfile] ?? PUGET_SOUND_SCENARIOS;
 
 async function loadScenario(scenario) {
   setStatus(scenarioStatus, `Loading "${scenario.label}"...`, false);

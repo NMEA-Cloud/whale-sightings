@@ -23,10 +23,17 @@ import httpx
 import websockets
 
 import config
-from route import WAYPOINTS, interpolate
+from route import ROUTES, interpolate
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("peer-service")
+
+try:
+    WAYPOINTS = ROUTES[config.LOCATION_PROFILE]
+except KeyError:
+    raise RuntimeError(
+        f"Unknown LOCATION_PROFILE {config.LOCATION_PROFILE!r}; expected one of {sorted(ROUTES)}"
+    ) from None
 
 # One additional interpolated position generated between each pair of waypoints, so
 # consecutive posted sightings trace a smoothly moving pod rather than jumping waypoint to
