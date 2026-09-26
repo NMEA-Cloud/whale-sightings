@@ -86,8 +86,9 @@ def discover(client: httpx.Client) -> dict[str, str]:
     only has a flat scopes_supported list, not a per-action mapping) and the
     oauth:protected-resource href discover_auth() follows next. Never hardcodes /sightings
     or /sightings/ws — if the service renamed either path tomorrow, only its own _links
-    would need to change."""
-    response = client.get(config.API_BASE, headers={"Accept": "application/json"})
+    would need to change. Asks for application/ld+json first — the service content-negotiates
+    the same document either way, this just says which representation we'd prefer."""
+    response = client.get(config.API_BASE, headers={"Accept": "application/ld+json, application/json"})
     response.raise_for_status()
     links = response.json()["_links"]
     create_link = links["sightings:create"]

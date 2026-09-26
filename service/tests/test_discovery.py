@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from app.discovery import SPECIES_CONTEXT, annotate_record, build_root_document, can_delete_record
+from app.discovery import SPECIES_URIS, annotate_record, build_root_document, can_delete_record
 from app.models import (
     GeoJSONPoint,
     GeoJSONPointProperties,
@@ -57,6 +57,8 @@ def test_build_root_document_links_include_key_endpoints():
         "scope": "peer:write",
     }
     assert doc["_links"]["sightings:by-source"]["templated"] is True
+    assert doc["_links"]["jsonld:context"]["href"] == "https://example.org:8000/contexts/sighting.jsonld"
+    assert doc["@id"] == settings.public_api_base_url.rstrip("/") + "/"
     assert doc["_links"]["sightings:live-sync"]["href"] == "wss://example.org:8000/sightings/ws"
     assert doc["_links"]["mqtt:broker"] == {
         "host": settings.mqtt_host,
@@ -68,18 +70,30 @@ def test_build_root_document_links_include_key_endpoints():
 def test_annotate_record_sets_id_type_and_self_link():
     record = make_record()
 
-    body = annotate_record(record, "https://example.org:8000", can_delete=True)
+    body = annotate_record(record, "https://example.org:8000", "https://example.org:8000", can_delete=True)
 
     assert body["@id"] == "https://example.org:8000/sightings/11111111-1111-1111-1111-111111111111"
-    assert body["@type"] == "Event"
+    assert body["@type"] == "Sighting"
+    assert body["@context"] == "https://example.org:8000/contexts/sighting.jsonld"
     assert body["_links"]["self"]["href"] == body["@id"]
     assert body["_links"]["delete"] == {"href": body["@id"], "method": "DELETE"}
+
+
+def test_annotate_record_uses_canonical_base_for_id_but_request_base_for_links():
+    record = make_record()
+
+    body = annotate_record(record, "https://service:8000/", "https://api.example.org:8000", can_delete=True)
+
+    assert body["@id"] == "https://api.example.org:8000/sightings/11111111-1111-1111-1111-111111111111"
+    assert body["_links"]["self"]["href"] == "https://service:8000/sightings/11111111-1111-1111-1111-111111111111"
+    assert body["_links"]["delete"]["href"] == body["_links"]["self"]["href"]
+    assert body["@context"] == "https://service:8000/contexts/sighting.jsonld"
 
 
 def test_annotate_record_omits_delete_link_when_not_allowed():
     record = make_record()
 
-    body = annotate_record(record, "https://example.org:8000", can_delete=False)
+    body = annotate_record(record, "https://example.org:8000", "https://example.org:8000", can_delete=False)
 
     assert "delete" not in body["_links"]
 
@@ -87,15 +101,15 @@ def test_annotate_record_omits_delete_link_when_not_allowed():
 def test_annotate_record_adds_species_uri_for_known_species():
     record = make_record(species="Orcinus orca")
 
-    body = annotate_record(record, "https://example.org:8000", can_delete=False)
+    body = annotate_record(record, "https://example.org:8000", "https://example.org:8000", can_delete=False)
 
-    assert body["sighting"]["species_uri"] == SPECIES_CONTEXT["Orcinus orca"]
+    assert body["sighting"]["species_uri"] == SPECIES_URIS["Orcinus orca"]
 
 
 def test_annotate_record_omits_species_uri_for_unknown_species():
     record = make_record(species="Some Unlisted Whale")
 
-    body = annotate_record(record, "https://example.org:8000", can_delete=False)
+    body = annotate_record(record, "https://example.org:8000", "https://example.org:8000", can_delete=False)
 
     assert "species_uri" not in body["sighting"]
 
@@ -115,7 +129,7 @@ def test_create_sighting_response_is_annotated(client):
 
     assert response.status_code == 201
     body = response.json()
-    assert body["@type"] == "Event"
+    assert body["@type"] == "Sighting"
     assert body["_links"]["self"]["href"].endswith(f"/sightings/{body['id']}")
     assert body["_links"]["delete"]["method"] == "DELETE"
 

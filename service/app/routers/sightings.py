@@ -4,16 +4,18 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.auth import require_admin_or_ingest, require_ingest, token_scopes, try_require_ingest, try_require_peer
 from app.config import get_settings
 from app.deps import get_mqtt_publisher, get_sse_broadcaster, get_store, get_ws_broadcaster, get_ws_broadcaster_ws
 from app.discovery import annotate_record, can_delete_record
+from app.jsonld import negotiated_json
 from app.models import (
     ModerationUpdate,
     PollResult,
     SightingCreate,
+    SightingRecord,
     SightingSource,
     SightingSourceType,
     SightingStats,
@@ -29,6 +31,12 @@ router = APIRouter()
 # implementation detail of that one endpoint, not a per-deployment setting, so it's a plain
 # constant here rather than a Settings field.
 _POLL_INTERVAL_SECONDS = 0.5
+
+
+def _annotate(record: SightingRecord, request: Request) -> dict:
+    return annotate_record(
+        record, str(request.base_url), get_settings().public_api_base_url, can_delete_record(record)
+    )
 
 
 def _location_filter_or_none(
@@ -48,7 +56,7 @@ def _location_filter_or_none(
     return lat, lon, radius_nm
 
 
-@router.post("/sightings", status_code=status.HTTP_201_CREATED)
+@router.post("/sightings", status_code=status.HTTP_201_CREATED, response_model=dict)
 def create_sighting(
     payload: SightingCreate,
     request: Request,
@@ -58,7 +66,7 @@ def create_sighting(
     sse: SseBroadcaster = Depends(get_sse_broadcaster),
     ingest_claims: dict | None = Depends(try_require_ingest),
     peer_claims: dict | None = Depends(try_require_peer),
-) -> dict:
+) -> JSONResponse:
     # An authenticated ingest or peer caller tags its own source — never trusted from the
     # request body, only from the token, so a caller can't spoof a different
     # source_upstream_id/peer identity claiming to be an existing sighting's owner. Any
@@ -77,7 +85,7 @@ def create_sighting(
     mqtt.publish("created", str(record.id))
     ws.broadcast("created", str(record.id))
     sse.broadcast("created", str(record.id))
-    return annotate_record(record, str(request.base_url), can_delete_record(record))
+    return negotiated_json(_annotate(record, request), request, status_code=status.HTTP_201_CREATED)
 
 
 @router.get("/sightings", response_model=list[dict])
@@ -89,7 +97,7 @@ def list_sightings(
     radius_nm: float | None = Query(default=None, gt=0, description="Search radius in nautical miles"),
     store: SightingStore = Depends(get_store),
     sse: SseBroadcaster = Depends(get_sse_broadcaster),
-) -> list[dict] | StreamingResponse:
+) -> JSONResponse | StreamingResponse:
     # Content negotiation: Accept: text/event-stream switches this same endpoint from a JSON
     # snapshot to a live push stream, instead of a separate URL. Checked first and ignores
     # since_hours/lat/lon/radius_nm entirely — like /sightings/ws and the MQTT publish, this
@@ -119,8 +127,7 @@ def list_sightings(
             r for r in records if r.sighting.location.geometry.properties.datetime >= cutoff
         ]
 
-    base_url = str(request.base_url)
-    return [annotate_record(r, base_url, can_delete_record(r)) for r in records]
+    return negotiated_json([_annotate(r, request) for r in records], request)
 
 
 # Declared before the "/sightings/{sighting_id}" path param route (same reasoning as
@@ -233,35 +240,35 @@ def get_sighting_stats(store: SightingStore = Depends(get_store)) -> SightingSta
     return store.stats()
 
 
-@router.get("/sightings/by-source/{source_type}/{upstream_id}")
+@router.get("/sightings/by-source/{source_type}/{upstream_id}", response_model=dict)
 def get_sighting_by_source(
     source_type: SightingSourceType,
     upstream_id: str,
     request: Request,
     store: SightingStore = Depends(get_store),
-) -> dict:
+) -> JSONResponse:
     """Unauthenticated read (same posture as GET /sightings/{id}) — the dedup/correlation
     lookup an ingestion process (e.g. whale-alert-connector) calls over plain HTTP, like
     everything else it does, to decide whether a given upstream record is already known."""
     record = store.get_by_source(source_type, upstream_id)
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sighting not found")
-    return annotate_record(record, str(request.base_url), can_delete_record(record))
+    return negotiated_json(_annotate(record, request), request)
 
 
-@router.get("/sightings/{sighting_id}")
+@router.get("/sightings/{sighting_id}", response_model=dict)
 def get_sighting(
     sighting_id: UUID,
     request: Request,
     store: SightingStore = Depends(get_store),
-) -> dict:
+) -> JSONResponse:
     record = store.get(sighting_id)
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sighting not found")
-    return annotate_record(record, str(request.base_url), can_delete_record(record))
+    return negotiated_json(_annotate(record, request), request)
 
 
-@router.patch("/sightings/{sighting_id}/moderation")
+@router.patch("/sightings/{sighting_id}/moderation", response_model=dict)
 def update_moderation_status(
     sighting_id: UUID,
     payload: ModerationUpdate,
@@ -271,7 +278,7 @@ def update_moderation_status(
     ws: WsBroadcaster = Depends(get_ws_broadcaster),
     sse: SseBroadcaster = Depends(get_sse_broadcaster),
     _claims: dict = Depends(require_ingest),
-) -> dict:
+) -> JSONResponse:
     """Ingest-only. Narrow by design (see ModerationUpdate) — a sighting's moderation
     status only makes sense for a Whale-Alert-sourced record, hence the 409 below rather
     than silently accepting it for a local/peer sighting."""
@@ -289,7 +296,7 @@ def update_moderation_status(
     mqtt.publish("updated", str(sighting_id))
     ws.broadcast("updated", str(sighting_id))
     sse.broadcast("updated", str(sighting_id))
-    return annotate_record(updated_record, str(request.base_url), can_delete_record(updated_record))
+    return negotiated_json(_annotate(updated_record, request), request)
 
 
 # Admin (browser) or ingest (machine, e.g. whale-alert-connector) — see app/auth.py. Every

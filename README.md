@@ -776,8 +776,8 @@ newest.
 
 `peer-service` is a simulated second system, built to demonstrate this API describing
 itself rather than a client needing to know its shape in advance. On startup it fetches
-this service's root document (`GET /` with `Accept: application/json` — see "Data model"
-below for a hint of the shape, or just curl it) and reads `sightings:create`/
+this service's root document (`GET /` with `Accept: application/ld+json, application/json`
+— see "Data model" below for a hint of the shape, or just curl it) and reads `sightings:create`/
 `sightings:live-sync` straight out of `_links` — it never hardcodes `/sightings` or
 `/sightings/ws`. Auth setup is discovered too, not just configured: it follows the root
 document's `oauth:protected-resource` link to find the audience and Hydra's issuer, then
@@ -961,6 +961,83 @@ on `GET /sightings` filters on the sighting's own datetime — "what did people 
 recently." `GET /sightings/poll` filters on `created_at` — "what's new in the database" —
 since a backdated sighting is still brand-new data the instant it's created.
 
+### JSON-LD
+
+Every sighting response (create, list, get, by-source, moderation) is JSON-LD as well as
+plain JSON. The extra keys are additive — no existing key is renamed, so plain-JSON clients
+see exactly what they always have:
+
+```json
+{
+  "@context": "https://<host>/contexts/sighting.jsonld",
+  "@id": "https://api.dev.whale-sightings.org:8000/sightings/<uuid>",
+  "@type": "Sighting",
+  "...": "the envelope above",
+  "_links": { "self": { "href": "..." }, "delete": { "href": "...", "method": "DELETE" } }
+}
+```
+
+- **Vocabulary**: project-specific, `https://whale-sightings.org/ns#` (see
+  `service/app/jsonld.py`). The IRIs only need to be unique and stable, not resolvable, and
+  Whale Alert uses no shared vocabulary to align with yet. Mapping to Darwin Core or
+  schema.org later is a context change, not a response-shape change.
+- **Context**: served at `GET /contexts/sighting.jsonld` and referenced by URL rather than
+  inlined, since `GET /sightings` is a bare array and an inline context would repeat on
+  every element.
+- **`type` keys**: `sighting.type`, `geometry.type` and `source.type` mean unrelated things,
+  so property-scoped contexts map them to `animalType`, `geometryType` and `sourceType`.
+- **`coordinates`** is a JSON literal (`"@type": "@json"`). JSON-LD otherwise treats an
+  array as an unordered set: `[lon, lat]` would lose its order in RDF, and a point like
+  `[0, 0]` would collapse to one value.
+- **`@id` vs `_links`**: `@id` is a sighting's identity and always uses
+  `PUBLIC_API_BASE_URL`, so one sighting has one IRI however it's reached — the same base
+  the MQTT/WebSocket/SSE event links already use. `_links` and the `@context` URL use the
+  request's own base URL, so they stay reachable for a caller like peer-service on the
+  Docker-internal `service` hostname.
+- **Content negotiation**: send `Accept: application/ld+json` to get
+  `Content-Type: application/ld+json`; the body is identical either way. `GET /` returns the
+  discovery document for either media type (anything else is redirected to `/docs`).
+
+#### Try it
+
+Responses are single-line JSON, so pipe bodies through `python3 -m json.tool` rather than
+`head` to read them.
+
+```bash
+# Root document: headers (expect content-type: application/ld+json), then the body
+curl -s -D - -o /dev/null -H 'Accept: application/ld+json' https://localhost:8000/
+curl -s -H 'Accept: application/ld+json' https://localhost:8000/ | python3 -m json.tool
+
+# The sighting context document
+curl -s https://localhost:8000/contexts/sighting.jsonld | python3 -m json.tool
+
+# One sighting's JSON-LD keys: @id uses the canonical base, _links the address you called
+curl -s -H 'Accept: application/ld+json' https://localhost:8000/sightings \
+  | python3 -c "import json,sys; r=json.load(sys.stdin)[0]; print(json.dumps({k: r[k] for k in ('@context', '@id', '@type', '_links')}, indent=2))"
+```
+
+To try it in the [JSON-LD playground](https://json-ld.org/playground/): the playground
+can't fetch the context from a LAN host with a private CA, so the context has to be inlined
+first. This copies one sighting, with its `"@context"` URL replaced by the context itself,
+to the clipboard (macOS `pbcopy`) ready to paste:
+
+```bash
+ID=$(curl -s https://localhost:8000/sightings | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['id'])")
+python3 -c "
+import json, urllib.request as u
+s = json.load(u.urlopen(u.Request('https://localhost:8000/sightings/$ID', headers={'Accept': 'application/ld+json'})))
+s['@context'] = json.load(u.urlopen('https://localhost:8000/contexts/sighting.jsonld'))['@context']
+print(json.dumps(s, indent=2))" | pbcopy
+```
+
+In the playground's Expanded tab every field appears under `https://whale-sightings.org/ns#`,
+with `coordinates` as an `@json` value; the N-Quads tab shows them as one `rdf:JSON`
+literal. Delete the `"@context"` line from the pasted input to see what the responses looked
+like before this: nearly everything disappears.
+
+"Hydra" elsewhere in this repo always means Ory Hydra, the OAuth2 server — not the W3C
+Hydra Core hypermedia vocabulary, which this API doesn't use.
+
 ## Roadmap
 
 This project is being built in stages:
@@ -1013,7 +1090,10 @@ This project is being built in stages:
     way, the root document's and every sighting's own `_links`/`@id` were switched from a
     fixed `public_api_base_url` setting to the actual incoming request's own base URL — a
     same-host peer container reaching the service via its Docker-internal name got back
-    links built for the browser-facing hostname instead, which it can't resolve. A formal
+    links built for the browser-facing hostname instead, which it can't resolve. (Later
+    narrowed: `@id` went back to the canonical `PUBLIC_API_BASE_URL`, since it's an identity,
+    not a link — only `_links` and the `@context` URL stay request-derived. See "JSON-LD"
+    under "Data model".) A formal
     peer-registration/webhook-push subsystem, and real delete authority over a peer's own
     data, remain intentional follow-ons — peer sightings are permanent (undeletable via this
     API) for this demo.
@@ -1045,3 +1125,10 @@ This project is being built in stages:
     tile parity is no longer a goal — the web clients themselves default to OpenStreetMap now
     too (with NOAA as an opt-in toggle), since NOAA's coverage gap (e.g. no nautical charts
     anywhere near Dallas, TX) applies equally here.
+14. **Done**: real JSON-LD on sighting responses — a hosted `@context`
+    (`/contexts/sighting.jsonld`) over a project-specific vocabulary, canonical `@id`s, and
+    `Accept: application/ld+json` content negotiation (see "JSON-LD" under "Data model").
+    Follow-ons: annotating `/sightings/poll` and `/sightings/stats` records, linking Whale
+    Alert records to a Whale Alert-side IRI, a `species_id` → WoRMS lookup in the connector,
+    and describing operations (method/expected body) as linked data rather than HAL
+    extensions.

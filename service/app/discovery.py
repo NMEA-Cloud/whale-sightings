@@ -1,11 +1,18 @@
-"""HATEOAS discovery document and JSON-LD-flavored response annotation.
+"""HATEOAS discovery document and JSON-LD response annotation.
 
 The root document (build_root_document) is what a peer service is meant to fetch instead
 of hardcoding endpoint paths — sibling in spirit to well_known.py's
-GET /.well-known/oauth-protected-resource: same plain-JSON, unauthenticated style, no
-hosted @context document. annotate_record wraps an already-persisted SightingRecord with
-@id/@type/_links for individual sighting responses, without adding request-time-only
-fields to SightingRecord itself — that keeps the Valkey-persisted shape clean.
+GET /.well-known/oauth-protected-resource: unauthenticated, content-negotiated between
+application/json and application/ld+json (see jsonld.py). annotate_record wraps an
+already-persisted SightingRecord with @context/@id/@type/_links for individual sighting
+responses, without adding request-time-only fields to SightingRecord itself — that keeps
+the Valkey-persisted shape clean.
+
+Two different bases on purpose: `@id` is a sighting's *identity* and uses the canonical
+public_api_base_url, so the same sighting has one IRI however it was reached (matching the
+sighting links the MQTT/WS/SSE broadcasters already send). `_links` and the `@context`
+reference must be *reachable* by this particular caller, so they use the request's own
+base URL (see build_root_document's docstring for why that differs).
 """
 
 from __future__ import annotations
@@ -13,6 +20,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.config import Settings
+from app.jsonld import CONTEXT_PATH, ROOT_CONTEXT
 from app.models import SightingRecord, SightingSourceType
 
 # WoRMS (World Register of Marine Species) AphiaID URIs for the species names appearing in
@@ -23,7 +31,7 @@ from app.models import SightingRecord, SightingSourceType
 # JSON-LD label. Only `species` (the scientific name) gets this — `type` (a casual bucket
 # like "orca"/"gray whale") isn't a species-identity claim. Verified against WoRMS directly
 # (marinespecies.org/rest/AphiaRecordsByMatchNames), not guessed.
-SPECIES_CONTEXT: dict[str, str] = {
+SPECIES_URIS: dict[str, str] = {
     "Orcinus orca": "urn:lsid:marinespecies.org:taxname:137102",
     "Eschrichtius robustus": "urn:lsid:marinespecies.org:taxname:137112",
     "Balaenoptera acutorostrata": "urn:lsid:marinespecies.org:taxname:137087",
@@ -51,7 +59,8 @@ def build_root_document(base_url: str, settings: Settings) -> dict[str, Any]:
     which is Docker-internal-only regardless of how this HTTP request arrived."""
     base = base_url.rstrip("/")
     return {
-        "@context": {"@vocab": "https://schema.org/"},
+        "@context": ROOT_CONTEXT,
+        "@id": f"{settings.public_api_base_url.rstrip('/')}/",
         "@type": "Service",
         "name": "Whale Sightings",
         "_links": {
@@ -72,6 +81,7 @@ def build_root_document(base_url: str, settings: Settings) -> dict[str, Any]:
             "sightings:live-sync": {"href": _ws_url(base, "/sightings/ws")},
             "oauth:protected-resource": {"href": f"{base}/.well-known/oauth-protected-resource"},
             "docs": {"href": f"{base}/docs"},
+            "jsonld:context": {"href": f"{base}{CONTEXT_PATH}"},
             # Not an HTTP link — a same-host peer container needs the broker's own
             # host/port/topic to subscribe directly, already Docker-internal values.
             "mqtt:broker": {"host": settings.mqtt_host, "port": settings.mqtt_port, "topic": settings.mqtt_topic},
@@ -79,18 +89,21 @@ def build_root_document(base_url: str, settings: Settings) -> dict[str, Any]:
     }
 
 
-def annotate_record(record: SightingRecord, base_url: str, can_delete: bool) -> dict[str, Any]:
+def annotate_record(
+    record: SightingRecord, base_url: str, canonical_base_url: str, can_delete: bool
+) -> dict[str, Any]:
     base = base_url.rstrip("/")
     self_href = f"{base}/sightings/{record.id}"
 
     body: dict[str, Any] = record.model_dump(mode="json")
 
-    species_uri = SPECIES_CONTEXT.get(record.sighting.species)
+    species_uri = SPECIES_URIS.get(record.sighting.species)
     if species_uri:
         body["sighting"]["species_uri"] = species_uri
 
-    body["@id"] = self_href
-    body["@type"] = "Event"  # schema.org's closest fit for a point-in-time observation
+    body["@context"] = f"{base}{CONTEXT_PATH}"
+    body["@id"] = f"{canonical_base_url.rstrip('/')}/sightings/{record.id}"
+    body["@type"] = "Sighting"
 
     links: dict[str, Any] = {"self": {"href": self_href}}
     if can_delete:
