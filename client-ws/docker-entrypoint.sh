@@ -8,6 +8,7 @@ cat > /app/config.js <<EOF
 window.WHALE_SIGHTINGS_CONFIG = {
   apiBase: "${API_BASE}",
   wsUrl: "${WS_URL}",
+  locationProfile: "${LOCATION_PROFILE}",
 };
 EOF
 

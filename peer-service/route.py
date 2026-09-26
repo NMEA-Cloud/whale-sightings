@@ -35,7 +35,7 @@ Waypoint = tuple[float, float]  # (lat, lon)
 # narrowing Admiralty Inlet's entrance (routed east of them, past Fort Casey), and the Kitsap
 # Peninsula's Point No Point/Hansville tip narrowing Puget Sound's entrance (routed east of it,
 # not a direct line south from Admiralty Inlet).
-WAYPOINTS: list[Waypoint] = [
+PUGET_SOUND_WAYPOINTS: list[Waypoint] = [
     # Outbound: San Juan Islands -> Strait of Juan de Fuca -> Admiralty Inlet -> Puget Sound
     (48.516, -123.18),
     (48.513, -123.19),
@@ -58,6 +58,55 @@ WAYPOINTS: list[Waypoint] = [
     (48.20, -122.85),
     (48.35, -123.05),
 ]
+
+# Lake Ray Hubbard (Rockwall, TX — the trade-show venue's local lake). Same verification
+# standard as PUGET_SOUND_WAYPOINTS above: every point, and every straight segment between
+# consecutive points, checked against OpenStreetMap by hand to confirm it stays in open
+# water.
+#
+# NOT a full lake-perimeter loop — that turned out to be geographically impossible without
+# cutting across land, the same class of mistake the Puget Sound comment above warns about.
+# Heath's landmass dominates the entire eastern side of the lake from the I-30 causeway all
+# the way down to the Rockwall-Forney Dam — there is no viable open-water channel on that
+# side for most of the lake's length, confirmed by hand-checking several points along it, not
+# assumed from a wide-zoomed-out view. So most of this route is a there-and-back down the
+# western channel (as before), routed around the Chandlers Landing peninsula just south of
+# the causeway and the Heath peninsula further south, stopping well clear of the dam at the
+# south end. The one place a real loop *is* possible is the wide basin north of the I-30
+# causeway, where both sides of the lake have open water — so the route detours out into a
+# small loop there before retracing south, giving sightings on both sides of I-30 (as
+# requested) via an honest loop shape rather than a fabricated one.
+ROCKWALL_TX_WAYPOINTS: list[Waypoint] = [
+    # Outbound: south of the I-30 causeway, down the western channel, around Heath's
+    # peninsula, to just north of the Rockwall-Forney Dam
+    (32.805, -96.495),
+    (32.840, -96.515),
+    (32.850, -96.499),
+    (32.860, -96.495),
+    (32.870, -96.495),
+    (32.878, -96.495),
+    # North loop: cross the I-30 causeway's latitude on the western channel (verified clear
+    # just west of the causeway's own landing point), then loop out into the wide basin north
+    # of it — genuinely on both sides of I-30, not just approaching it from one side
+    (32.900, -96.495),
+    (32.900, -96.490),
+    (32.910, -96.480),
+    (32.900, -96.495),
+    # Return: retrace the same verified-clear channel back south. The final wrap (this list's
+    # last point back to its first) reuses the same (32.840,-96.515)<->(32.805,-96.495)
+    # segment already verified above, just reversed.
+    (32.878, -96.495),
+    (32.870, -96.495),
+    (32.860, -96.495),
+    (32.850, -96.499),
+    (32.840, -96.515),
+]
+
+# Keyed by LOCATION_PROFILE (config.py) — see main.py's resolution of this into WAYPOINTS.
+ROUTES: dict[str, list[Waypoint]] = {
+    "puget-sound": PUGET_SOUND_WAYPOINTS,
+    "rockwall-tx": ROCKWALL_TX_WAYPOINTS,
+}
 
 
 def _distance(a: Waypoint, b: Waypoint) -> float:

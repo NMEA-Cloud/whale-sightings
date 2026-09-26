@@ -15,7 +15,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-ADMIN_ORIGIN="${1:-http://localhost:8080}"
+ADMIN_ORIGIN="${1:-https://localhost:8080}"
 API_BASE="${2:-https://api.dev.whale-sightings.org:8000}"
 CLIENT_ID="whale-sightings-admin"
 

@@ -415,6 +415,61 @@ serves plain HTTP, unlike the real Docker-built containers — fine for `localho
 browsers treat as a secure context regardless of scheme, but Geolocation silently stops
 working if you open a directly-run client via anything else, e.g. a LAN IP while testing that.)
 
+### Location profiles
+
+A `LOCATION_PROFILE` environment variable (`puget-sound`, the default, or `rockwall-tx`)
+picks which demo dataset four different pieces use, all switching together:
+
+- The four map clients' default center/zoom (`shared/sightings-shared.js`'s
+  `LOCATION_PROFILES`) — which area the map opens on before any real sightings load.
+- `client-admin`'s canned scenario buttons (`app.js`'s `SCENARIO_SETS`) — `rockwall-tx` swaps
+  in a set relocated to Lake Ray Hubbard, TX, leaning into the joke of real whale species
+  turning up in a landlocked Texas reservoir rather than inventing fake ones.
+- `peer-service`'s simulated moving-pod route (`route.py`'s `ROUTES`) — a second,
+  hand-verified-against-OpenStreetMap waypoint route around Lake Ray Hubbard's open water,
+  built the same way and to the same standard as the original Puget Sound route (see that
+  file's comments).
+- The Whale Alert connector's query area (`service/app/ingest/config.py`'s
+  `WHALE_ALERT_BBOXES`) — this only changes what real-world area it *asks* Whale Alert
+  about, never fabricates data for a location that doesn't have any. Since Lake Ray Hubbard
+  is a landlocked reservoir, expect the `rockwall-tx` bbox to come back with few or no real
+  results — that's correct, not a bug, and no longer the reason to skip running the
+  connector during a `rockwall-tx` demo (it used to unavoidably show real Puget Sound
+  sightings far outside the map's default view; now it just queries the right area).
+
+Templated into `config.js`/env the same way as `API_BASE` — set it in `docker-compose.yml`
+(already `puget-sound` by default on all seven affected services: the five static clients,
+`peer-service`, and `whale-alert-connector`) or, for a temporary switch without touching the
+shared file, in your own gitignored `docker-compose.override.yml`:
+
+```yaml
+services:
+  client-admin:
+    environment:
+      LOCATION_PROFILE: rockwall-tx
+  client-mqtt:
+    environment:
+      LOCATION_PROFILE: rockwall-tx
+  client-long-poll:
+    environment:
+      LOCATION_PROFILE: rockwall-tx
+  client-ws:
+    environment:
+      LOCATION_PROFILE: rockwall-tx
+  client-sse:
+    environment:
+      LOCATION_PROFILE: rockwall-tx
+  peer-service:
+    environment:
+      LOCATION_PROFILE: rockwall-tx
+  whale-alert-connector:
+    environment:
+      LOCATION_PROFILE: rockwall-tx
+```
+
+Restart the affected containers to pick it up — no rebuild needed, same image either way.
+Remove the override afterward to go back to the `puget-sound` default.
+
 ### The MQTT client
 
 Open https://localhost:8081. The form auto-fills location/time via the browser Geolocation
@@ -500,8 +555,10 @@ can find out something changed.
 
 A separate static site for demo purposes: it shows sighting counts plus the oldest/newest
 sighting, lets you load canned demo data with one click, and can clear all sightings to
-reset between demos. Open https://localhost:8080. The canned scenarios live in the
-`SCENARIOS` array in `client-admin/app.js` — edit or add to them for your own demo needs.
+reset between demos. Open https://localhost:8080. The canned scenarios live in
+`client-admin/app.js`'s `PUGET_SOUND_SCENARIOS`/`ROCKWALL_TX_SCENARIOS` arrays (picked
+between via `LOCATION_PROFILE` — see "Location profiles" above) — edit or add to them for
+your own demo needs.
 
 Deleting sightings (individually or via "Clear all sightings") requires signing in — see
 the next section. Stats and demo-data loading don't; those stay open to any client, same
@@ -637,10 +694,11 @@ Or as part of the full dev stack:
 ```
 
 Either way, watch its logs for a full poll cycle (`docker compose logs -f
-whale-alert-connector`); real Whale Alert sightings within `WHALE_ALERT_BBOX` (defaults to
-greater Puget Sound plus the San Juan Islands) should appear as teal pins with `Source:
-whale_alert` in any map client (see "Source-aware map pins" below), and the admin client's
-stats panel should show a non-zero Whale Alert count.
+whale-alert-connector`); real Whale Alert sightings within `WHALE_ALERT_BBOX` (derived from
+`LOCATION_PROFILE` — see "Location profiles" above; defaults to greater Puget Sound plus the
+San Juan Islands) should appear as teal pins with `Source: whale_alert` in any map client
+(see "Source-aware map pins" below), and the admin client's stats panel should show a
+non-zero Whale Alert count.
 
 ### Startup options at a glance
 
@@ -743,7 +801,8 @@ directly.
 It then runs two things at once:
 
 - **Generates sightings** for a simulated moving pod, walking a small fixed set of
-  waypoints (`peer-service/route.py`) and posting one interpolated position every
+  waypoints (`peer-service/route.py`'s `ROUTES`, picked via `LOCATION_PROFILE` — see
+  "Location profiles" above) and posting one interpolated position every
   `GENERATE_INTERVAL_SECONDS`. No `source` field in the payload — the service derives
   `source.type: "peer"` and `source.peer_id` purely from the bearer token's own claims (see
   "Whale Alert connector" above for the same anti-spoofing pattern), so peer-service can't

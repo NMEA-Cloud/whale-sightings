@@ -3,4 +3,5 @@
 // machine. If config.js doesn't exist, app.js falls back to the localhost default below.
 window.WHALE_SIGHTINGS_CONFIG = {
   apiBase: "https://localhost:8000",
+  locationProfile: "puget-sound", // or "rockwall-tx" — see app.js's SCENARIO_SETS
 };

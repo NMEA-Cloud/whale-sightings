@@ -41,10 +41,18 @@ const locateFilterButton = document.getElementById("locate-filter-button");
 const pickLocationButton = document.getElementById("pick-location-button");
 const pickFilterLocationButton = document.getElementById("pick-filter-location-button");
 
-// Default view roughly covers the sample data's area (Puget Sound) until real
-// sightings load and fitBounds() takes over.
-const DEFAULT_MAP_CENTER = [47.7262, -122.645];
-const DEFAULT_MAP_ZOOM = 9;
+// Which demo dataset's area the map defaults to until real sightings load and fitBounds()
+// takes over — keyed the same way as peer-service's LOCATION_PROFILE (route.py's ROUTES)
+// and client-admin's SCENARIO_SETS, so all three switch together via one config value. See
+// README's "Location profiles".
+const LOCATION_PROFILES = {
+  "puget-sound": { center: [47.7262, -122.645], zoom: 9 },
+  "rockwall-tx": { center: [32.84, -96.495], zoom: 12 },
+};
+const DEFAULT_LOCATION_PROFILE = "puget-sound";
+const locationProfile = config.locationProfile ?? DEFAULT_LOCATION_PROFILE;
+const { center: DEFAULT_MAP_CENTER, zoom: DEFAULT_MAP_ZOOM } =
+  LOCATION_PROFILES[locationProfile] ?? LOCATION_PROFILES[DEFAULT_LOCATION_PROFILE];
 
 let map;
 let markersLayer;
