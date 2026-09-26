@@ -1,7 +1,7 @@
 {
   "@context": {
     "@version": 1.1,
-    "@vocab": "https://whale-sightings.org/ns#",
+    "@vocab": "https://schema.nmea.org/whale-sightings#",
     "xsd": "http://www.w3.org/2001/XMLSchema#",
     "created_at": {
       "@type": "xsd:dateTime"

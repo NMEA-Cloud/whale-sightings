@@ -14,7 +14,7 @@ API_BASE = "https://api.example.org:8000"
 ISSUER = "https://auth.example.org:4444"
 
 ROOT_DOCUMENT = {
-    "@context": {"@vocab": "https://whale-sightings.org/ns#"},
+    "@context": {"@vocab": "https://schema.nmea.org/whale-sightings#"},
     "@type": "Service",
     "_links": {
         "self": {"href": f"{API_BASE}/"},

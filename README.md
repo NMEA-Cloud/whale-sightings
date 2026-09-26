@@ -997,7 +997,7 @@ see exactly what they always have:
 }
 ```
 
-- **Vocabulary**: project-specific, `https://whale-sightings.org/ns#` (see
+- **Vocabulary**: project-specific, `https://schema.nmea.org/whale-sightings#` (see
   `service/app/jsonld.py`). The IRIs only need to be unique and stable, not resolvable, and
   Whale Alert uses no shared vocabulary to align with yet. Mapping to Darwin Core or
   schema.org later is a context change, not a response-shape change.
@@ -1050,9 +1050,9 @@ s['@context'] = json.load(u.urlopen('https://localhost:8000/contexts/sighting.js
 print(json.dumps(s, indent=2))" | pbcopy
 ```
 
-In the playground's Expanded tab every field appears under `https://whale-sightings.org/ns#`,
-with `coordinates` as an `@json` value; the N-Quads tab shows them as one `rdf:JSON`
-literal. Delete the `"@context"` line from the pasted input to see what the responses looked
+In the playground's Expanded tab every field appears under
+`https://schema.nmea.org/whale-sightings#`, with `coordinates` as an `@json` value; the
+N-Quads tab shows them as one `rdf:JSON` literal. Delete the `"@context"` line from the pasted input to see what the responses looked
 like before this: nearly everything disappears.
 
 To see a second system consuming it, watch peer-service interpret each new sighting (see

@@ -1,12 +1,12 @@
 """The JSON-LD context for this API's own responses, and Accept-based content negotiation
 between application/json and application/ld+json.
 
-The vocabulary is project-specific (https://whale-sightings.org/ns#) rather than Darwin
-Core/schema.org: its IRIs only need to be globally unique and stable, not resolvable, and
-no current peer (Whale Alert included) uses any shared vocabulary to align with yet. Every
-term here maps an *existing* JSON key — nothing in a response body is renamed for JSON-LD's
-sake, so clients reading plain keys (client-admin, the mobile client, the
-whale-alert-connector) are unaffected.
+The vocabulary is project-specific (https://schema.nmea.org/whale-sightings#) rather
+than Darwin Core/schema.org: its IRIs only need to be globally unique and stable, not
+resolvable, and no current peer (Whale Alert included) uses any shared vocabulary to align
+with yet. Every term here maps an *existing* JSON key — nothing in a response body is
+renamed for JSON-LD's sake, so clients reading plain keys (client-admin, the mobile client,
+the whale-alert-connector) are unaffected.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from typing import Any
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-VOCAB = "https://whale-sightings.org/ns#"
+VOCAB = "https://schema.nmea.org/whale-sightings#"
 
 JSONLD_MEDIA_TYPE = "application/ld+json"
 
