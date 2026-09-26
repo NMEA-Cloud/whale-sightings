@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from app.auth import require_admin, require_admin_or_ingest
 from app.deps import get_mqtt_publisher, get_store
 from app.main import create_app
+from app.ws import http_base_url
 from tests.test_sightings_api import sample_payload_dict
 
 
@@ -32,7 +33,9 @@ def test_ws_client_receives_created_and_deleted_events(client):
         client.delete(f"/sightings/{body['id']}")
         deleted_message = ws.receive_json()
 
-    resource_url = f"https://localhost:8000/sightings/{body['id']}"
+    # Built from this connection's own address (TestClient's http://testserver), not the
+    # canonical PUBLIC_API_BASE_URL — see ConnectionWsBroadcaster.
+    resource_url = f"http://testserver/sightings/{body['id']}"
     assert created_message == {"event": "created", "sighting": resource_url}
     assert deleted_message == {"event": "deleted", "sighting": resource_url}
 
@@ -57,6 +60,25 @@ def test_ws_allows_missing_origin(client):
         body = client.post("/sightings", json=sample_payload_dict()).json()
         message = ws.receive_json()
 
-    assert message == {"event": "created", "sighting": f"https://localhost:8000/sightings/{body['id']}"}
+    assert message == {"event": "created", "sighting": f"http://testserver/sightings/{body['id']}"}
 
     client.delete(f"/sightings/{body['id']}")
+
+
+def test_ws_event_link_follows_the_connections_own_scheme_and_host(store, mqtt_publisher):
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_mqtt_publisher] = lambda: mqtt_publisher
+    with TestClient(app) as test_client:
+        # As a same-host peer container would connect: TLS, Docker-internal hostname.
+        with test_client.websocket_connect("wss://service:8000/sightings/ws") as ws:
+            body = test_client.post("/sightings", json=sample_payload_dict()).json()
+            message = ws.receive_json()
+
+    assert message == {"event": "created", "sighting": f"https://service:8000/sightings/{body['id']}"}
+    app.dependency_overrides.clear()
+
+
+def test_http_base_url_maps_websocket_schemes():
+    assert http_base_url("wss://service:8000/") == "https://service:8000"
+    assert http_base_url("ws://testserver/") == "http://testserver"

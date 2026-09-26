@@ -23,11 +23,15 @@ class ConnectionSseBroadcaster(SseBroadcaster):
     polling. Unlike a WebSocket, an SSE connection has no persistent bidirectional handle to
     push through directly — each connected client is instead represented by an asyncio.Queue
     that its own streaming response reads from.
+
+    Each event's `sighting` link is built from that subscriber's own request base URL —
+    same reasoning as ConnectionWsBroadcaster: it's a link to follow, so it must be
+    reachable by the caller that received it.
     """
 
-    def __init__(self, base_url: str) -> None:
-        self._base_url = base_url.rstrip("/")
-        self._queues: set[asyncio.Queue[str]] = set()
+    def __init__(self) -> None:
+        # queue -> the base URL its subscriber's request came in on
+        self._queues: dict[asyncio.Queue[str], str] = {}
         # broadcast() is called from create_sighting/update_moderation_status/delete_sighting,
         # which are sync def and run in Starlette's threadpool — a different thread, not the
         # event loop. Capturing the loop here (constructed in lifespan, itself already running
@@ -35,24 +39,24 @@ class ConnectionSseBroadcaster(SseBroadcaster):
         # ConnectionWsBroadcaster.
         self._loop = asyncio.get_running_loop()
 
-    def subscribe(self) -> asyncio.Queue[str]:
+    def subscribe(self, base_url: str) -> asyncio.Queue[str]:
         queue: asyncio.Queue[str] = asyncio.Queue()
-        self._queues.add(queue)
+        self._queues[queue] = base_url.rstrip("/")
         return queue
 
     def unsubscribe(self, queue: asyncio.Queue[str]) -> None:
-        self._queues.discard(queue)
+        self._queues.pop(queue, None)
 
     def broadcast(self, event: Event, sighting_id: str) -> None:
-        payload = json.dumps({"event": event, "sighting": f"{self._base_url}/sightings/{sighting_id}"})
         # call_soon_threadsafe (not run_coroutine_threadsafe) is enough here: queue.put_nowait
         # is synchronous and non-blocking, so there's no awaitable work to schedule per
         # connection the way ConnectionWsBroadcaster's send_text() needs.
-        for queue in list(self._queues):
+        for queue, base in list(self._queues.items()):
+            payload = json.dumps({"event": event, "sighting": f"{base}/sightings/{sighting_id}"})
             self._loop.call_soon_threadsafe(queue.put_nowait, payload)
 
-    async def event_stream(self) -> AsyncIterator[str]:
-        queue = self.subscribe()
+    async def event_stream(self, base_url: str) -> AsyncIterator[str]:
+        queue = self.subscribe(base_url)
         try:
             # A comment line (ignored by EventSource's onmessage, per the SSE spec) that gives
             # both a real client and a test a deterministic "the stream is open and this
