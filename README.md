@@ -998,9 +998,42 @@ see exactly what they always have:
   `Content-Type: application/ld+json`; the body is identical either way. `GET /` returns the
   discovery document for either media type (anything else is redirected to `/docs`).
 
+#### Try it
+
+Responses are single-line JSON, so pipe bodies through `python3 -m json.tool` rather than
+`head` to read them.
+
+```bash
+# Root document: headers (expect content-type: application/ld+json), then the body
+curl -s -D - -o /dev/null -H 'Accept: application/ld+json' https://localhost:8000/
+curl -s -H 'Accept: application/ld+json' https://localhost:8000/ | python3 -m json.tool
+
+# The sighting context document
+curl -s https://localhost:8000/contexts/sighting.jsonld | python3 -m json.tool
+
+# One sighting's JSON-LD keys: @id uses the canonical base, _links the address you called
+curl -s -H 'Accept: application/ld+json' https://localhost:8000/sightings \
+  | python3 -c "import json,sys; r=json.load(sys.stdin)[0]; print(json.dumps({k: r[k] for k in ('@context', '@id', '@type', '_links')}, indent=2))"
+```
+
 To try it in the [JSON-LD playground](https://json-ld.org/playground/): the playground
-can't fetch the context from a LAN host with a private CA, so replace the `"@context"` URL
-in a response with the `"@context"` object from `/contexts/sighting.jsonld` before pasting.
+can't fetch the context from a LAN host with a private CA, so the context has to be inlined
+first. This copies one sighting, with its `"@context"` URL replaced by the context itself,
+to the clipboard (macOS `pbcopy`) ready to paste:
+
+```bash
+ID=$(curl -s https://localhost:8000/sightings | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['id'])")
+python3 -c "
+import json, urllib.request as u
+s = json.load(u.urlopen(u.Request('https://localhost:8000/sightings/$ID', headers={'Accept': 'application/ld+json'})))
+s['@context'] = json.load(u.urlopen('https://localhost:8000/contexts/sighting.jsonld'))['@context']
+print(json.dumps(s, indent=2))" | pbcopy
+```
+
+In the playground's Expanded tab every field appears under `https://whale-sightings.org/ns#`,
+with `coordinates` as an `@json` value; the N-Quads tab shows them as one `rdf:JSON`
+literal. Delete the `"@context"` line from the pasted input to see what the responses looked
+like before this: nearly everything disappears.
 
 "Hydra" elsewhere in this repo always means Ory Hydra, the OAuth2 server — not the W3C
 Hydra Core hypermedia vocabulary, which this API doesn't use.
