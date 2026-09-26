@@ -1,6 +1,9 @@
 import pytest
 
-from route import ROUTES, interpolate
+import math
+import random
+
+from route import METERS_PER_DEGREE_LAT, ROUTES, interpolate, jitter
 
 # On the equator, cos(mean_lat) == 1, so distance along longitude reduces to plain
 # subtraction — makes the expected positions below easy to verify by hand. Deliberately
@@ -56,3 +59,45 @@ def test_all_profiles_have_nonempty_waypoints():
     # water) is verified by hand against OpenStreetMap, not something this can assert.
     for name, waypoints in ROUTES.items():
         assert waypoints, f"{name} route has no waypoints"
+
+
+def _meters_between(a, b):
+    """Same flat-earth conversion jitter() itself uses."""
+    dy = (b[0] - a[0]) * METERS_PER_DEGREE_LAT
+    dx = (b[1] - a[1]) * METERS_PER_DEGREE_LAT * math.cos(math.radians(a[0]))
+    return math.hypot(dx, dy)
+
+
+# Both LOCATION_PROFILE latitudes (Puget Sound, Lake Ray Hubbard), so the longitude
+# scaling (which depends on latitude) is exercised at each.
+@pytest.mark.parametrize("point", [(47.7, -122.45), (32.8, -96.5)])
+def test_jitter_stays_within_max_meters(point):
+    rng = random.Random(1)
+    for _ in range(1000):
+        assert _meters_between(point, jitter(point, 40, rng)) <= 40 + 1e-6
+
+
+@pytest.mark.parametrize("max_meters", [0, -5])
+def test_jitter_disabled_returns_point_unchanged(max_meters):
+    assert jitter((32.8, -96.5), max_meters, random.Random(1)) == (32.8, -96.5)
+
+
+def test_jitter_is_deterministic_for_a_seed_and_varies_between_draws():
+    first = [jitter((32.8, -96.5), 40, random.Random(7)) for _ in range(3)]
+    assert first[0] == first[1] == first[2]
+
+    rng = random.Random(7)
+    draws = [jitter((32.8, -96.5), 40, rng) for _ in range(100)]
+    assert len(set(draws)) == 100
+
+
+def test_jitter_spreads_over_the_whole_disk():
+    # Uniform over the disk's area puts ~75% of points beyond half the radius and ~25%
+    # within it — a missing sqrt (bunched at the center) or a circle-only bug (all at
+    # max_meters) would fail one side of this.
+    point = (32.8, -96.5)
+    rng = random.Random(3)
+    distances = [_meters_between(point, jitter(point, 40, rng)) for _ in range(2000)]
+    inner = sum(d < 20 for d in distances) / len(distances)
+    assert 0.18 < inner < 0.32
+    assert max(distances) > 35

@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import random
 import ssl
 import time
 from datetime import datetime, timezone
@@ -28,7 +29,7 @@ from pyld import jsonld
 
 import config
 from linked_data import CachingContextLoader, summarize
-from route import ROUTES, interpolate
+from route import ROUTES, interpolate, jitter
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("peer-service")
@@ -188,11 +189,13 @@ async def generate_sightings(client: httpx.AsyncClient, token_client: PeerTokenC
     GENERATE_INTERVAL_SECONDS. No source field in the payload at all — the service derives
     source.type="peer" and source.peer_id purely from the bearer token's own claims (see
     create_sighting in routers/sightings.py), the same anti-spoofing pattern the
-    whale-alert-connector uses."""
+    whale-alert-connector uses. Each position gets a small random offset (see route.py's
+    jitter()) so repeated laps don't stack sightings at identical coordinates."""
     t = 0.0
     step = 1.0 / (len(WAYPOINTS) * STEPS_PER_WAYPOINT)
+    rng = random.Random()
     while True:
-        lat, lon = interpolate(WAYPOINTS, t)
+        lat, lon = jitter(interpolate(WAYPOINTS, t), config.JITTER_METERS, rng)
         t += step
         payload = build_sighting_payload(lat, lon)
         try:
