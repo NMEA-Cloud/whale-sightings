@@ -208,3 +208,47 @@ def test_wanderer_is_deterministic_for_a_seed():
     second = PolygonWanderer(ROCKWALL_TX_POLYGON, random.Random(7))
 
     assert [first.next_position() for _ in range(20)] == [second.next_position() for _ in range(20)]
+
+
+# --- resuming a previous run ---------------------------------------------------------------
+
+# Open water in the basin north of I-30, with room to keep heading north.
+PREVIOUS, LAST = (32.896, -96.495), (32.900, -96.495)
+
+
+def test_wanderer_resumes_from_last_position_without_repeating_it():
+    wanderer = PolygonWanderer(ROCKWALL_TX_POLYGON, random.Random(1), resume_from=[PREVIOUS, LAST])
+
+    first = wanderer.next_position()
+
+    assert wanderer.resumed
+    assert first != LAST
+    assert _meters(LAST, first) <= 450 + 1
+    assert segment_inside(LAST, first, ROCKWALL_TX_POLYGON)
+
+
+def test_wanderer_resumes_heading_the_way_it_was_going():
+    # PREVIOUS -> LAST heads due north; the first gentle turn is at most 45 degrees off it.
+    wanderer = PolygonWanderer(ROCKWALL_TX_POLYGON, random.Random(1), resume_from=[PREVIOUS, LAST])
+
+    first = wanderer.next_position()
+
+    dy = first[0] - LAST[0]
+    dx = (first[1] - LAST[1]) * math.cos(math.radians(LAST[0]))
+    assert abs(math.degrees(math.atan2(dx, dy))) <= 45 + 1e-6
+
+
+def test_wanderer_ignores_a_last_position_outside_the_polygon():
+    puget_sound = (47.7, -122.45)  # e.g. left over from a different LOCATION_PROFILE
+    wanderer = PolygonWanderer(ROCKWALL_TX_POLYGON, random.Random(1), resume_from=[puget_sound])
+
+    first = wanderer.next_position()
+
+    assert not wanderer.resumed
+    assert point_in_polygon(first, ROCKWALL_TX_POLYGON)
+
+
+def test_route_profiles_always_restart_at_the_beginning():
+    positions = position_source("puget-sound", random.Random(1), jitter_meters=0, resume_from=[(48.2, -122.85)])
+
+    assert positions.next_position() == ROUTES["puget-sound"][0]

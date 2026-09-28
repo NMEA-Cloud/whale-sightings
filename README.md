@@ -830,7 +830,11 @@ It then runs two things at once:
     about 450 m per sighting in a gently curving direction, checking that every step's
     straight line stays inside the outline, so it can't cut across a peninsula. Over time
     the dots meander across the whole lake. No offset is applied: positions never repeat,
-    and an offset could push a point onto land.
+    and an offset could push a point onto land. On restart it **continues from its own last
+    sighting**, heading the way it was going: at startup it follows the root document's
+    `sightings:list` link and picks out its own sightings (`source.peer_id` matching its
+    client id). It only starts somewhere random if it has none yet, or its last one isn't
+    inside the lake (e.g. left over from `puget-sound`).
 
   No `source` field in the payload — the service derives
   `source.type: "peer"` and `source.peer_id` purely from the bearer token's own claims (see

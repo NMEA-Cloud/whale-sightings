@@ -233,6 +233,13 @@ def _offset(point: Waypoint, meters: float, heading: float) -> Waypoint:
     return (lat + dlat, lon + dlon)
 
 
+def _heading(a: Waypoint, b: Waypoint) -> float:
+    """Compass direction (radians, 0 = north) from a to b — the inverse of _offset()."""
+    dy = b[0] - a[0]
+    dx = (b[1] - a[1]) * math.cos(math.radians(a[0]))
+    return math.atan2(dx, dy)
+
+
 def random_point_in_polygon(polygon: list[Waypoint], rng: random.Random) -> Waypoint:
     """Uniform over the polygon's area, by rejection sampling its bounding box."""
     lats = [p[0] for p in polygon]
@@ -266,23 +273,43 @@ class RouteWalker:
 
 
 class PolygonWanderer:
-    """An area profile: the pod starts somewhere random inside the polygon and each call moves
-    it about `step_meters` in a gently curving direction, never leaving the polygon (every
-    step's straight line is checked, not just its endpoint). No jitter: positions never
-    repeat, and an offset could push a point outside the outline."""
+    """An area profile: each call moves the pod about `step_meters` in a gently curving
+    direction, never leaving the polygon (every step's straight line is checked, not just its
+    endpoint). No jitter: positions never repeat, and an offset could push a point outside
+    the outline.
+
+    `resume_from` (oldest first) continues a previous run instead of starting at a random
+    point: the pod steps on from the last position, heading the way it was going (from the
+    one before it). Ignored if the last position isn't inside this polygon — e.g. left over
+    from a different LOCATION_PROFILE."""
 
     MAX_TURN = math.radians(45)
     GENTLE_TRIES = 8  # tries at a gentle turn from the current heading before any direction
     TRIES_PER_STEP_SIZE = 24
     MIN_STEP_METERS = 25.0
 
-    def __init__(self, polygon: list[Waypoint], rng: random.Random, step_meters: float = 450.0) -> None:
+    def __init__(
+        self,
+        polygon: list[Waypoint],
+        rng: random.Random,
+        step_meters: float = 450.0,
+        resume_from: list[Waypoint] | None = None,
+    ) -> None:
         self._polygon = polygon
         self._rng = rng
         self._step_meters = step_meters
-        self._position = random_point_in_polygon(polygon, rng)
         self._heading = rng.uniform(0, 2 * math.pi)
-        self._started = False
+        last = resume_from[-1] if resume_from else None
+        self.resumed = last is not None and point_in_polygon(last, polygon)
+        if self.resumed:
+            # Already posted by the previous run — step on from it rather than repeating it.
+            self._position = last
+            self._started = True
+            if len(resume_from) >= 2:
+                self._heading = _heading(resume_from[-2], last)
+        else:
+            self._position = random_point_in_polygon(polygon, rng)
+            self._started = False
 
     def next_position(self) -> Waypoint:
         if not self._started:
@@ -306,11 +333,20 @@ class PolygonWanderer:
         return self._position
 
 
-def position_source(profile: str, rng: random.Random, jitter_meters: float) -> RouteWalker | PolygonWanderer:
+def check_profile(profile: str) -> None:
+    if profile not in ROUTES and profile not in AREAS:
+        raise RuntimeError(f"Unknown LOCATION_PROFILE {profile!r}; expected one of {sorted(ROUTES | AREAS)}")
+
+
+def position_source(
+    profile: str, rng: random.Random, jitter_meters: float, resume_from: list[Waypoint] | None = None
+) -> RouteWalker | PolygonWanderer:
     """The pod's movement for a LOCATION_PROFILE — main.py calls this once at startup and
-    then next_position() for every sighting."""
+    then next_position() for every sighting. `resume_from` (this peer's most recent posted
+    positions, oldest first) lets an area profile continue where the previous run left off;
+    waypoint routes always restart at their beginning (an out-and-back route passes most
+    points twice, so a position alone can't say which way the pod was going)."""
+    check_profile(profile)
     if profile in ROUTES:
         return RouteWalker(ROUTES[profile], rng, jitter_meters)
-    if profile in AREAS:
-        return PolygonWanderer(AREAS[profile], rng)
-    raise RuntimeError(f"Unknown LOCATION_PROFILE {profile!r}; expected one of {sorted(ROUTES | AREAS)}")
+    return PolygonWanderer(AREAS[profile], rng, resume_from=resume_from)
