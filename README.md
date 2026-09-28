@@ -818,7 +818,7 @@ directly.
 It then runs two things at once:
 
 - **Generates sightings** for a simulated moving pod, posting one position every
-  `GENERATE_INTERVAL_SECONDS`. How the pod moves depends on `LOCATION_PROFILE` (see
+  `GENERATE_INTERVAL_SECONDS` (default 120, i.e. every two minutes). How the pod moves depends on `LOCATION_PROFILE` (see
   "Location profiles" above; `peer-service/route.py`'s `position_source()`):
   - **Waypoint route** (`puget-sound`): walks a small fixed set of waypoints, one
     interpolated position per sighting. Each position gets a random offset of up to
