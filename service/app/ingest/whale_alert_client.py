@@ -20,6 +20,14 @@ ALL_STATUSES = (0, 1, 2, 3)
 INCLUDE_TEST_SIGHTINGS = "1"
 
 
+# Renew a cached Whale Alert token this long before its stated expiry. Generous on purpose:
+# the connector measures expiry with its own clock (inside Docker), which has been seen to
+# lag real time by a minute or two over a token's one-hour life — enough that a 60-second
+# margin still sent an already-expired token (a 401 once an hour). A 401 is also handled
+# directly (see search_sightings), so this margin only makes that path rarer.
+TOKEN_RENEWAL_MARGIN_SECONDS = 300
+
+
 @dataclass
 class _CachedToken:
     access_token: str
@@ -54,7 +62,7 @@ class WhaleAlertClient:
         body = response.json()
         self._cached = _CachedToken(
             access_token=body["access_token"],
-            expires_at=time.monotonic() + body["expires_in"] - 60,
+            expires_at=time.monotonic() + body["expires_in"] - TOKEN_RENEWAL_MARGIN_SECONDS,
         )
         return self._cached.access_token
 
@@ -65,8 +73,11 @@ class WhaleAlertClient:
         the reference collection's date-range example — Whale Alert's `created` field has
         no timezone marker in any reviewed example, so day-granularity here is deliberately
         coarse; day-boundary edge cases are covered by the lookback window's overlap with
-        the previous cycle, not by sub-day precision in this query."""
-        token = self._get_token()
+        the previous cycle, not by sub-day precision in this query.
+
+        A 401 means Whale Alert no longer accepts the cached token (expired sooner than this
+        side's clock thought, or revoked): drop it, fetch a fresh one, and retry once. A
+        second 401 is a real authentication problem and is raised as usual."""
         params = [("status[]", status) for status in statuses] + [
             ("bbox", bbox),
             ("start", start),
@@ -75,13 +86,19 @@ class WhaleAlertClient:
             ("per_page", per_page),
             ("test", INCLUDE_TEST_SIGHTINGS),
         ]
-        response = self._client.get(
-            f"{self._settings.whale_alert_api_base_url}/sightings",
-            params=params,
-            headers={"Authorization": f"Bearer {token}"},
-        )
+        response = self._get_sightings(params)
+        if response.status_code == 401:
+            self._cached = None
+            response = self._get_sightings(params)
         response.raise_for_status()
         return response.json()
+
+    def _get_sightings(self, params: list[tuple[str, Any]]) -> httpx.Response:
+        return self._client.get(
+            f"{self._settings.whale_alert_api_base_url}/sightings",
+            params=params,
+            headers={"Authorization": f"Bearer {self._get_token()}"},
+        )
 
     def iter_all_sightings(
         self, *, statuses: tuple[int, ...], bbox: str, start: str, end: str
