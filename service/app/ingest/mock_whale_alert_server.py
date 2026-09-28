@@ -180,10 +180,15 @@ async def search_sightings(
     end: str = Query(...),
     page: int = Query(1, ge=1),
     per_page: int = Query(25, ge=1, le=200),
+    test: str | None = Query(None),
 ) -> dict[str, Any]:
     """Supports exactly the query params whale_alert_client.py actually sends
-    (status[]/bbox/start/end/page/per_page) — the real API also accepts sort/dir/etc, but
-    the connector never sends those, so this mock doesn't implement them."""
+    (status[]/bbox/start/end/page/per_page/test) — the real API also accepts sort/dir/etc,
+    but the connector never sends those, so this mock doesn't implement them.
+
+    `test` mirrors the real API's semantics: omitted -> normal sightings only, "1" -> normal
+    and test, "only" -> test sightings only. No seeded fixture is a test sighting, so "only"
+    returns nothing and the other two return the same results."""
     _require_bearer(request)
 
     # status[] is a repeated param ("status[]=0&status[]=1&..."); FastAPI can't declare it
@@ -197,6 +202,11 @@ async def search_sightings(
 
     matched = []
     for record in _fixtures.values():
+        is_test = bool(record.get("test"))
+        if test == "only" and not is_test:
+            continue
+        if test not in ("1", "only") and is_test:
+            continue
         if statuses and record["moderated"] not in statuses:
             continue
         if not (west <= record["lng"] <= east and south <= record["lat"] <= north):

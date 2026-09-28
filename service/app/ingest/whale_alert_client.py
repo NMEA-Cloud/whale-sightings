@@ -13,6 +13,12 @@ from app.ingest.config import IngestSettings
 # (status[]=0&status[]=1&...) — see "Search - status all four" in the reference collection.
 ALL_STATUSES = (0, 1, 2, 3)
 
+# Whale Alert's optional `test` search parameter: "1" returns normal *and* test sightings,
+# "only" returns just test sightings, and omitting it returns normal sightings only. The
+# connector sends "1" so sightings reported as tests (e.g. demo reports at a trade-show
+# booth) flow through alongside real ones rather than being silently hidden.
+INCLUDE_TEST_SIGHTINGS = "1"
+
 
 @dataclass
 class _CachedToken:
@@ -67,6 +73,7 @@ class WhaleAlertClient:
             ("end", end),
             ("page", page),
             ("per_page", per_page),
+            ("test", INCLUDE_TEST_SIGHTINGS),
         ]
         response = self._client.get(
             f"{self._settings.whale_alert_api_base_url}/sightings",
