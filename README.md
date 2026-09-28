@@ -150,11 +150,19 @@ Windows (not needed on macOS/Linux, and not an issue for browsers, which soft-fa
 
 ### Automatic TLS renewal (cert-renewer)
 
-step-ca issues leaf certs with only a 24-hour lifetime (see `scripts/setup-tls.sh` — no
-`--not-after` is set, so it inherits step-ca's default), which would otherwise mean every
-developer re-running `setup-tls.sh` and restarting four containers (`service`, `mqtt`,
-`hydra`, `login-consent`) by hand roughly once a day. The infra project's `cert-renewer`
-container (`cert-renewer/`) automates both halves of that: it runs `step ca renew --daemon`
+**Certificate lifetime.** A freshly initialized step-ca issues leaf certs valid for only
+**24 hours**, and a renewed cert keeps the lifetime of the one it replaces. So
+`scripts/setup-tls.sh` first sets the CA's `whale-sightings-admin` provisioner to issue
+**90-day** certs by default (1 year max) — stored in the CA's own config in the
+`step-ca-data` volume, applied once per CA and skipped on later runs (it restarts step-ca
+only the first time). To check a CA: `openssl x509 -in certs/localhost.pem -noout -enddate`
+should show a date about 90 days out after running `setup-tls.sh`. The root CA itself is
+valid for 10 years and is unaffected by any of this, so machines that already trust it
+never need updating when the leaf cert is reissued or renewed.
+
+Even at 90 days, the cert would otherwise need re-running `setup-tls.sh` and restarting four
+containers (`service`, `mqtt`, `hydra`, `login-consent`) by hand before it expires. The
+infra project's `cert-renewer` container (`cert-renewer/`) automates both halves of that: it runs `step ca renew --daemon`
 against the same `certs/localhost.pem`/`certs/localhost-key.pem` files, authenticating via
 mTLS with the cert itself (no provisioner password needed, unlike initial issuance), and its
 `--exec` hook restarts those four containers via a mounted Docker socket every time a

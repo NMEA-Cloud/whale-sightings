@@ -30,12 +30,28 @@ step is not installed. Install it, then re-run this script:
 Write-Host "Starting step-ca..."
 docker compose -f infra/docker-compose.yml up -d step-ca | Out-Null
 
+function Wait-StepCa {
+    for ($i = 0; $i -lt 15; $i++) {
+        docker compose -f infra/docker-compose.yml exec -T step-ca step ca health --ca-url https://localhost:9000 `
+            --root /home/step/certs/root_ca.crt *> $null
+        if ($LASTEXITCODE -eq 0) { return }
+        Start-Sleep -Seconds 2
+    }
+}
+
 Write-Host "Waiting for step-ca to be ready..."
-for ($i = 0; $i -lt 15; $i++) {
-    docker compose -f infra/docker-compose.yml exec -T step-ca step ca health --ca-url https://localhost:9000 `
-        --root /home/step/certs/root_ca.crt *> $null
-    if ($LASTEXITCODE -eq 0) { break }
-    Start-Sleep -Seconds 2
+Wait-StepCa
+
+# Certificate lifetime - see the identical step in setup-tls.sh for why. A fresh step-ca issues
+# 24-hour certs by default; set 90 days (1 year max) once per CA, skipped on re-runs.
+docker compose -f infra/docker-compose.yml exec -T step-ca `
+    grep -q '"defaultTLSCertDuration": "2160h0m0s"' /home/step/config/ca.json
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Setting step-ca's certificate lifetime to 90 days (1 year max)..."
+    docker compose -f infra/docker-compose.yml exec -T step-ca step ca provisioner update whale-sightings-admin `
+        --x509-default-dur=2160h --x509-max-dur=8760h --ca-config=/home/step/config/ca.json | Out-Null
+    docker compose -f infra/docker-compose.yml restart step-ca | Out-Null
+    Wait-StepCa
 }
 
 $RootFingerprint = (docker compose -f infra/docker-compose.yml exec -T step-ca step certificate fingerprint /home/step/certs/root_ca.crt).Trim()
