@@ -28,14 +28,32 @@ INFRA_COMPOSE=(docker compose -f infra/docker-compose.yml)
 echo "Starting step-ca..."
 "${INFRA_COMPOSE[@]}" up -d step-ca >/dev/null
 
+wait_for_step_ca() {
+  for _ in $(seq 1 15); do
+    if "${INFRA_COMPOSE[@]}" exec -T step-ca step ca health --ca-url https://localhost:9000 \
+        --root /home/step/certs/root_ca.crt >/dev/null 2>&1; then
+      return
+    fi
+    sleep 2
+  done
+}
+
 echo "Waiting for step-ca to be ready..."
-for _ in $(seq 1 15); do
-  if "${INFRA_COMPOSE[@]}" exec -T step-ca step ca health --ca-url https://localhost:9000 \
-      --root /home/step/certs/root_ca.crt >/dev/null 2>&1; then
-    break
-  fi
-  sleep 2
-done
+wait_for_step_ca
+
+# Certificate lifetime. A freshly initialized step-ca issues 24-hour certs by default — every
+# renewal keeps the same lifetime, so a cert that misses one renewal breaks everything within
+# a day. Set 90 days by default (1 year max) on our provisioner before issuing anything. Stored
+# in the CA's own config (the step-ca-data volume), so this only has to take effect once per
+# CA; the check makes re-runs a no-op instead of restarting step-ca every time.
+if ! "${INFRA_COMPOSE[@]}" exec -T step-ca \
+    grep -q '"defaultTLSCertDuration": "2160h0m0s"' /home/step/config/ca.json; then
+  echo "Setting step-ca's certificate lifetime to 90 days (1 year max)..."
+  "${INFRA_COMPOSE[@]}" exec -T step-ca step ca provisioner update whale-sightings-admin \
+    --x509-default-dur=2160h --x509-max-dur=8760h --ca-config=/home/step/config/ca.json >/dev/null
+  "${INFRA_COMPOSE[@]}" restart step-ca >/dev/null
+  wait_for_step_ca
+fi
 
 ROOT_FINGERPRINT="$("${INFRA_COMPOSE[@]}" exec -T step-ca \
   step certificate fingerprint /home/step/certs/root_ca.crt)"
