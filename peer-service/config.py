@@ -35,7 +35,9 @@ PEER_CLIENT_SECRET = _require_env("PEER_CLIENT_SECRET")
 # that `dev.` hostname resolves for real (see the README's "Running it standalone" section).
 HYDRA_INTERNAL_BASE_URL = os.environ.get("HYDRA_INTERNAL_BASE_URL")
 
-GENERATE_INTERVAL_SECONDS = float(os.environ.get("GENERATE_INTERVAL_SECONDS", "30"))
+# How often the simulated pod posts a sighting. Two minutes keeps the map readable over a long
+# trade-show day without flooding it with dots.
+GENERATE_INTERVAL_SECONDS = float(os.environ.get("GENERATE_INTERVAL_SECONDS", "120"))
 
 # Where the simulated pod moves — see route.py's position_source(). "puget-sound" (the
 # original; a waypoint route) or "rockwall-tx" (the trade-show venue's local lake, Lake Ray
