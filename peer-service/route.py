@@ -1,5 +1,12 @@
-"""Waypoints + interpolation for peer-service's simulated moving pod — pure functions, no
-I/O, unit-testable in isolation (see tests/test_route.py)."""
+"""Where peer-service's simulated moving pod goes — pure functions, no I/O, unit-testable in
+isolation (see tests/test_route.py). Two kinds of LOCATION_PROFILE:
+
+- A waypoint route (ROUTES): the pod follows a hand-verified loop via interpolate(), with a
+  small random offset per sighting (jitter()).
+- An area (AREAS): the pod wanders freely inside a polygon outlining open water
+  (PolygonWanderer), each sighting a short step from the last.
+
+position_source() picks the right one for a profile."""
 
 from __future__ import annotations
 
@@ -60,53 +67,40 @@ PUGET_SOUND_WAYPOINTS: list[Waypoint] = [
     (48.35, -123.05),
 ]
 
-# Lake Ray Hubbard (Rockwall, TX — the trade-show venue's local lake). Same verification
-# standard as PUGET_SOUND_WAYPOINTS above: every point, and every straight segment between
-# consecutive points, checked against OpenStreetMap by hand to confirm it stays in open
-# water.
-#
-# NOT a full lake-perimeter loop — that turned out to be geographically impossible without
-# cutting across land, the same class of mistake the Puget Sound comment above warns about.
-# Heath's landmass dominates the entire eastern side of the lake from the I-30 causeway all
-# the way down to the Rockwall-Forney Dam — there is no viable open-water channel on that
-# side for most of the lake's length, confirmed by hand-checking several points along it, not
-# assumed from a wide-zoomed-out view. So most of this route is a there-and-back down the
-# western channel (as before), routed around the Chandlers Landing peninsula just south of
-# the causeway and the Heath peninsula further south, stopping well clear of the dam at the
-# south end. The one place a real loop *is* possible is the wide basin north of the I-30
-# causeway, where both sides of the lake have open water — so the route detours out into a
-# small loop there before retracing south, giving sightings on both sides of I-30 (as
-# requested) via an honest loop shape rather than a fabricated one.
-ROCKWALL_TX_WAYPOINTS: list[Waypoint] = [
-    # Outbound: south of the I-30 causeway, down the western channel, around Heath's
-    # peninsula, to just north of the Rockwall-Forney Dam
-    (32.805, -96.495),
-    (32.840, -96.515),
-    (32.850, -96.499),
-    (32.860, -96.495),
-    (32.870, -96.495),
-    (32.878, -96.495),
-    # North loop: cross the I-30 causeway's latitude on the western channel (verified clear
-    # just west of the causeway's own landing point), then loop out into the wide basin north
-    # of it — genuinely on both sides of I-30, not just approaching it from one side
-    (32.900, -96.495),
-    (32.900, -96.490),
-    (32.910, -96.480),
-    (32.900, -96.495),
-    # Return: retrace the same verified-clear channel back south. The final wrap (this list's
-    # last point back to its first) reuses the same (32.840,-96.515)<->(32.805,-96.495)
-    # segment already verified above, just reversed.
-    (32.878, -96.495),
-    (32.870, -96.495),
-    (32.860, -96.495),
-    (32.850, -96.499),
-    (32.840, -96.515),
+# Lake Ray Hubbard (Rockwall, TX — the trade-show venue's local lake): an outline of its open
+# water, supplied by the project owner as (lat, lon) vertices in order around the perimeter.
+# The pod wanders anywhere inside it (PolygonWanderer) rather than following a fixed route,
+# so the only thing that has to be right about the lake's shape is this outline itself.
+ROCKWALL_TX_POLYGON: list[Waypoint] = [
+    (32.801670636029755, -96.49546347099154),
+    (32.80856564748744, -96.52509812570078),
+    (32.82333081711253, -96.53516692930376),
+    (32.85887151645536, -96.53221852405925),
+    (32.86853824595756, -96.50537024788387),
+    (32.891697348858614, -96.51053597877258),
+    (32.92031461173164, -96.50006230031669),
+    (32.94297987926426, -96.51363207594133),
+    (32.97729160248317, -96.50004852490305),
+    (32.97518358155846, -96.48321541872562),
+    (32.960569462940335, -96.48808916171697),
+    (32.943721908469065, -96.50049132820399),
+    (32.93739997236853, -96.48558223162752),
+    (32.91351784900801, -96.4745753417717),
+    (32.89983346930533, -96.4889926514224),
+    (32.87700764257871, -96.49348742490017),
+    (32.853872031047906, -96.4965942956694),
+    (32.836905653393764, -96.51231303124236),
+    (32.82766437443781, -96.51063964475692),
+    (32.81113922050193, -96.49369195490858),
 ]
 
-# Keyed by LOCATION_PROFILE (config.py) — see main.py's resolution of this into WAYPOINTS.
+# Keyed by LOCATION_PROFILE (config.py). A profile is either a waypoint route or an area —
+# see position_source(), which main.py calls once at startup.
 ROUTES: dict[str, list[Waypoint]] = {
     "puget-sound": PUGET_SOUND_WAYPOINTS,
-    "rockwall-tx": ROCKWALL_TX_WAYPOINTS,
+}
+AREAS: dict[str, list[Waypoint]] = {
+    "rockwall-tx": ROCKWALL_TX_POLYGON,
 }
 
 
@@ -191,3 +185,132 @@ def jitter(point: Waypoint, max_meters: float, rng: random.Random) -> Waypoint:
     dlat = (r * math.sin(theta)) / METERS_PER_DEGREE_LAT
     dlon = (r * math.cos(theta)) / (METERS_PER_DEGREE_LAT * math.cos(math.radians(lat)))
     return (lat + dlat, lon + dlon)
+
+
+def point_in_polygon(point: Waypoint, polygon: list[Waypoint]) -> bool:
+    """Ray casting (even-odd rule). Works directly in degrees: only inside/outside matters
+    here, not distance, so no projection is needed at this scale."""
+    lat, lon = point
+    inside = False
+    n = len(polygon)
+    for i in range(n):
+        lat1, lon1 = polygon[i]
+        lat2, lon2 = polygon[(i + 1) % n]
+        if (lat1 > lat) != (lat2 > lat):
+            crossing_lon = lon1 + (lat - lat1) * (lon2 - lon1) / (lat2 - lat1)
+            if lon < crossing_lon:
+                inside = not inside
+    return inside
+
+
+def _orientation(a: Waypoint, b: Waypoint, c: Waypoint) -> float:
+    return (b[1] - a[1]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[1] - a[1])
+
+
+def segments_cross(a: Waypoint, b: Waypoint, c: Waypoint, d: Waypoint) -> bool:
+    """Whether segment a-b properly crosses segment c-d (touching endpoints don't count —
+    irrelevant with random float positions)."""
+    return (_orientation(a, b, c) * _orientation(a, b, d) < 0) and (
+        _orientation(c, d, a) * _orientation(c, d, b) < 0
+    )
+
+
+def segment_inside(a: Waypoint, b: Waypoint, polygon: list[Waypoint]) -> bool:
+    """Both ends inside AND the straight line between them crosses no edge — so a step can't
+    jump across a peninsula even when both of its ends are in open water."""
+    if not (point_in_polygon(a, polygon) and point_in_polygon(b, polygon)):
+        return False
+    n = len(polygon)
+    return not any(segments_cross(a, b, polygon[i], polygon[(i + 1) % n]) for i in range(n))
+
+
+def _offset(point: Waypoint, meters: float, heading: float) -> Waypoint:
+    """`meters` from `point` in compass direction `heading` (radians, 0 = north) — same
+    flat-earth conversion jitter() uses."""
+    lat, lon = point
+    dlat = meters * math.cos(heading) / METERS_PER_DEGREE_LAT
+    dlon = meters * math.sin(heading) / (METERS_PER_DEGREE_LAT * math.cos(math.radians(lat)))
+    return (lat + dlat, lon + dlon)
+
+
+def random_point_in_polygon(polygon: list[Waypoint], rng: random.Random) -> Waypoint:
+    """Uniform over the polygon's area, by rejection sampling its bounding box."""
+    lats = [p[0] for p in polygon]
+    lons = [p[1] for p in polygon]
+    for _ in range(10_000):
+        candidate = (rng.uniform(min(lats), max(lats)), rng.uniform(min(lons), max(lons)))
+        if point_in_polygon(candidate, polygon):
+            return candidate
+    raise ValueError("couldn't find a point inside the polygon — is it degenerate?")
+
+
+class RouteWalker:
+    """A waypoint-route profile: interpolate() along the loop, one step per call, with
+    jitter() applied to each position."""
+
+    def __init__(
+        self, waypoints: list[Waypoint], rng: random.Random, jitter_meters: float, steps_per_waypoint: int = 4
+    ) -> None:
+        self._waypoints = waypoints
+        self._rng = rng
+        self._jitter_meters = jitter_meters
+        # steps_per_waypoint positions generated per waypoint, so consecutive sightings trace
+        # a smoothly moving pod rather than jumping waypoint to waypoint.
+        self._step = 1.0 / (len(waypoints) * steps_per_waypoint)
+        self._t = 0.0
+
+    def next_position(self) -> Waypoint:
+        point = jitter(interpolate(self._waypoints, self._t), self._jitter_meters, self._rng)
+        self._t += self._step
+        return point
+
+
+class PolygonWanderer:
+    """An area profile: the pod starts somewhere random inside the polygon and each call moves
+    it about `step_meters` in a gently curving direction, never leaving the polygon (every
+    step's straight line is checked, not just its endpoint). No jitter: positions never
+    repeat, and an offset could push a point outside the outline."""
+
+    MAX_TURN = math.radians(45)
+    GENTLE_TRIES = 8  # tries at a gentle turn from the current heading before any direction
+    TRIES_PER_STEP_SIZE = 24
+    MIN_STEP_METERS = 25.0
+
+    def __init__(self, polygon: list[Waypoint], rng: random.Random, step_meters: float = 450.0) -> None:
+        self._polygon = polygon
+        self._rng = rng
+        self._step_meters = step_meters
+        self._position = random_point_in_polygon(polygon, rng)
+        self._heading = rng.uniform(0, 2 * math.pi)
+        self._started = False
+
+    def next_position(self) -> Waypoint:
+        if not self._started:
+            self._started = True
+            return self._position
+
+        step = self._step_meters
+        while step >= self.MIN_STEP_METERS:
+            for attempt in range(self.TRIES_PER_STEP_SIZE):
+                if attempt < self.GENTLE_TRIES:
+                    heading = self._heading + self._rng.uniform(-self.MAX_TURN, self.MAX_TURN)
+                else:
+                    heading = self._rng.uniform(0, 2 * math.pi)  # boxed in: try any direction
+                candidate = _offset(self._position, step, heading)
+                if segment_inside(self._position, candidate, self._polygon):
+                    self._position, self._heading = candidate, heading
+                    return candidate
+            step /= 2
+        # Nowhere to go even at the minimum step (shouldn't happen for a sane outline) — stay
+        # put rather than leave the polygon.
+        return self._position
+
+
+def position_source(profile: str, rng: random.Random, jitter_meters: float) -> RouteWalker | PolygonWanderer:
+    """The pod's movement for a LOCATION_PROFILE — main.py calls this once at startup and
+    then next_position() for every sighting."""
+    if profile in ROUTES:
+        return RouteWalker(ROUTES[profile], rng, jitter_meters)
+    if profile in AREAS:
+        return PolygonWanderer(AREAS[profile], rng)
+    raise RuntimeError(f"Unknown LOCATION_PROFILE {profile!r}; expected one of {sorted(ROUTES | AREAS)}")

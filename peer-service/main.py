@@ -29,22 +29,14 @@ from pyld import jsonld
 
 import config
 from linked_data import CachingContextLoader, summarize
-from route import ROUTES, interpolate, jitter
+from route import position_source
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("peer-service")
 
-try:
-    WAYPOINTS = ROUTES[config.LOCATION_PROFILE]
-except KeyError:
-    raise RuntimeError(
-        f"Unknown LOCATION_PROFILE {config.LOCATION_PROFILE!r}; expected one of {sorted(ROUTES)}"
-    ) from None
-
-# One additional interpolated position generated between each pair of waypoints, so
-# consecutive posted sightings trace a smoothly moving pod rather than jumping waypoint to
-# waypoint.
-STEPS_PER_WAYPOINT = 4
+# A waypoint route or a polygon to wander in, depending on LOCATION_PROFILE (see route.py).
+# Built at import time so an unknown profile fails at startup, not on the first sighting.
+POSITIONS = position_source(config.LOCATION_PROFILE, random.Random(), config.JITTER_METERS)
 
 
 class PeerTokenClient:
@@ -185,18 +177,14 @@ def build_sighting_payload(lat: float, lon: float) -> dict:
 
 
 async def generate_sightings(client: httpx.AsyncClient, token_client: PeerTokenClient, create_url: str) -> None:
-    """Walks the waypoint route indefinitely, POSTing one interpolated sighting every
+    """Moves the simulated pod indefinitely, POSTing one sighting every
     GENERATE_INTERVAL_SECONDS. No source field in the payload at all — the service derives
     source.type="peer" and source.peer_id purely from the bearer token's own claims (see
     create_sighting in routers/sightings.py), the same anti-spoofing pattern the
-    whale-alert-connector uses. Each position gets a small random offset (see route.py's
-    jitter()) so repeated laps don't stack sightings at identical coordinates."""
-    t = 0.0
-    step = 1.0 / (len(WAYPOINTS) * STEPS_PER_WAYPOINT)
-    rng = random.Random()
+    whale-alert-connector uses. Where each sighting is comes from POSITIONS — a jittered
+    waypoint route or a wander inside a polygon, depending on LOCATION_PROFILE."""
     while True:
-        lat, lon = jitter(interpolate(WAYPOINTS, t), config.JITTER_METERS, rng)
-        t += step
+        lat, lon = POSITIONS.next_position()
         payload = build_sighting_payload(lat, lon)
         try:
             response = await client.post(
