@@ -781,6 +781,12 @@ e.g. demo reports at the trade-show booth — are imported alongside real ones, 
 `whale_alert` sightings. The local mock server (`whale-alert-mock`) honors the same
 parameter.
 
+**Whale Alert tokens** last one hour. The connector renews its cached token 5 minutes before
+expiry, and if Whale Alert still answers a search with `401` (the connector's clock inside
+Docker can lag real time), it drops the token, gets a fresh one, and retries that search
+once, so a poll never fails just because a token expired. A second `401` in a row is a real
+credentials problem and shows up in the log as `Poll cycle failed`.
+
 ### Source-aware map pins
 
 Every sighting's marker on `client-mqtt`/`client-long-poll`/`client-ws`/`client-sse`'s map is now a small

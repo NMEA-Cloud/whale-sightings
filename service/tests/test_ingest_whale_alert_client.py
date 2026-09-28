@@ -3,7 +3,10 @@ import json
 import httpx
 
 from app.ingest.config import IngestSettings
-from app.ingest.whale_alert_client import ALL_STATUSES, WhaleAlertClient
+import pytest
+
+from app.ingest import whale_alert_client
+from app.ingest.whale_alert_client import ALL_STATUSES, TOKEN_RENEWAL_MARGIN_SECONDS, WhaleAlertClient
 
 
 def make_settings(**overrides) -> IngestSettings:
@@ -99,3 +102,67 @@ def test_iter_all_sightings_paginates_through_every_page():
 
     assert [r["id"] for r in results] == [1, 2]
     assert seen_pages == [1, 2]
+
+
+def _search(wa_client):
+    return wa_client.search_sightings(statuses=ALL_STATUSES, bbox="x", start="2026-08-01", end="2026-08-31", page=1)
+
+
+_PAGE = {"success": True, "total": 0, "page": 1, "per_page": 100, "pages": 1, "results": []}
+
+
+def test_search_retries_once_with_a_fresh_token_after_401():
+    tokens_issued = []
+    searches = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/token"):
+            token = f"tok-{len(tokens_issued) + 1}"
+            tokens_issued.append(token)
+            return httpx.Response(200, json={"access_token": token, "expires_in": 3600})
+        searches.append(request.headers["authorization"])
+        # Whale Alert has already expired the first token, whatever our clock says.
+        if request.headers["authorization"] == "Bearer tok-1":
+            return httpx.Response(401)
+        return httpx.Response(200, json=_PAGE)
+
+    wa_client = WhaleAlertClient(make_settings(), httpx.Client(transport=httpx.MockTransport(handler)))
+
+    assert _search(wa_client) == _PAGE
+    assert tokens_issued == ["tok-1", "tok-2"]
+    assert searches == ["Bearer tok-1", "Bearer tok-2"]
+
+
+def test_search_raises_when_a_fresh_token_is_also_rejected():
+    searches = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/token"):
+            return _token_response()
+        searches.append(request)
+        return httpx.Response(401)
+
+    wa_client = WhaleAlertClient(make_settings(), httpx.Client(transport=httpx.MockTransport(handler)))
+
+    with pytest.raises(httpx.HTTPStatusError):
+        _search(wa_client)
+    assert len(searches) == 2  # one retry, not a loop
+
+
+def test_cached_token_is_renewed_five_minutes_before_expiry(monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr(whale_alert_client.time, "monotonic", lambda: now[0])
+    token_requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        token_requests.append(request)
+        return httpx.Response(200, json={"access_token": f"tok-{len(token_requests)}", "expires_in": 3600})
+
+    wa_client = WhaleAlertClient(make_settings(), httpx.Client(transport=httpx.MockTransport(handler)))
+
+    assert wa_client._get_token() == "tok-1"
+    now[0] += 3600 - TOKEN_RENEWAL_MARGIN_SECONDS - 1  # just inside the renewal margin
+    assert wa_client._get_token() == "tok-1"
+    now[0] += 2  # past it
+    assert wa_client._get_token() == "tok-2"
+    assert TOKEN_RENEWAL_MARGIN_SECONDS == 300
