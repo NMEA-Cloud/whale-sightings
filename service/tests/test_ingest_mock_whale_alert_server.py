@@ -80,6 +80,19 @@ def test_sightings_filters_by_bbox(client):
     assert ids == {116184, 900001, 900002, 900003}
 
 
+def _ids(response):
+    return {r["id"] for r in response.json()["results"]}
+
+
+def test_sightings_test_param_mirrors_real_api(client):
+    mock_server._fixtures[900001]["test"] = True  # mark one in-box sighting as a test report
+    query = {"bbox": PUGET_SOUND_BBOX, "status[]": [0, 1, 2, 3], **WIDE_DATE_RANGE}
+
+    assert _ids(_authed_get(client, **query)) == {116184, 900002, 900003}
+    assert _ids(_authed_get(client, test="1", **query)) == {116184, 900001, 900002, 900003}
+    assert _ids(_authed_get(client, test="only", **query)) == {900001}
+
+
 def test_sightings_filters_by_status(client):
     response = _authed_get(client, bbox="-180,-90,180,90", **{"status[]": [3]}, **WIDE_DATE_RANGE)
 

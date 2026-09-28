@@ -40,7 +40,7 @@ def test_get_token_posts_json_body_not_form_encoded():
     assert json.loads(requests[0].content) == {"client_id": "wa-id", "client_secret": "wa-secret"}
 
 
-def test_search_sightings_sends_status_array_bbox_and_bearer_token():
+def test_search_sightings_sends_status_array_bbox_test_flag_and_bearer_token():
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/auth/token"):
             return _token_response()
@@ -49,6 +49,8 @@ def test_search_sightings_sends_status_array_bbox_and_bearer_token():
         assert request.url.params["bbox"] == "-123.3,47.0,-122.0,48.8"
         assert request.url.params["start"] == "2026-08-01"
         assert request.url.params["end"] == "2026-08-31"
+        # Normal *and* test sightings — see INCLUDE_TEST_SIGHTINGS.
+        assert request.url.params["test"] == "1"
         return httpx.Response(
             200,
             json={"success": True, "total": 1, "page": 1, "per_page": 100, "pages": 1, "results": [{"id": 1}]},

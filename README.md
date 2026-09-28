@@ -772,6 +772,14 @@ status → `PATCH .../moderation`; mapped to Deleted → `DELETE`, plus a perman
 Valkey set (`ingest:whale_alert:retired`) so that upstream id is never recreated on a later
 cycle once it's gone.
 
+**Test sightings are included.** Whale Alert's search takes an optional `test` parameter:
+omitted, it returns normal sightings only; `test=1` returns normal *and* test sightings;
+`test=only` returns just test sightings. The connector always sends `test=1`
+(`INCLUDE_TEST_SIGHTINGS` in `whale_alert_client.py`), so sightings reported as tests —
+e.g. demo reports at the trade-show booth — are imported alongside real ones, as ordinary
+`whale_alert` sightings. The local mock server (`whale-alert-mock`) honors the same
+parameter.
+
 ### Source-aware map pins
 
 Every sighting's marker on `client-mqtt`/`client-long-poll`/`client-ws`/`client-sse`'s map is now a small
