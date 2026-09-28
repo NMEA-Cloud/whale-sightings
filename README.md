@@ -425,12 +425,13 @@ picks which demo dataset four different pieces use, all switching together:
 - `client-admin`'s canned scenario buttons (`app.js`'s `SCENARIO_SETS`) — `rockwall-tx` swaps
   in a set relocated to Lake Ray Hubbard, TX, leaning into the joke of real whale species
   turning up in a landlocked Texas reservoir rather than inventing fake ones.
-- `peer-service`'s simulated moving-pod route (`route.py`'s `ROUTES`) — a second,
-  hand-verified-against-OpenStreetMap waypoint route around Lake Ray Hubbard's open water,
-  built the same way and to the same standard as the original Puget Sound route (see that
-  file's comments). Any new route — or a larger `JITTER_METERS` — needs at least that much
-  clearance from shore everywhere along it, since the offset moves each point sideways off
-  the hand-checked line.
+- `peer-service`'s simulated moving pod (`route.py`'s `position_source()`). `puget-sound`
+  follows a hand-verified waypoint route (`ROUTES`); any new route — or a larger
+  `JITTER_METERS` — needs at least that much clearance from shore everywhere along it,
+  since the offset moves each point sideways off the hand-checked line. `rockwall-tx`
+  instead wanders freely inside an outline of Lake Ray Hubbard's open water
+  (`ROCKWALL_TX_POLYGON`, in `AREAS`), so the only thing that has to be right about the
+  lake's shape is that outline.
 - The Whale Alert connector's query area (`service/app/ingest/config.py`'s
   `WHALE_ALERT_BBOXES`) — this only changes what real-world area it *asks* Whale Alert
   about, never fabricates data for a location that doesn't have any. Since Lake Ray Hubbard
@@ -816,14 +817,26 @@ directly.
 
 It then runs two things at once:
 
-- **Generates sightings** for a simulated moving pod, walking a small fixed set of
-  waypoints (`peer-service/route.py`'s `ROUTES`, picked via `LOCATION_PROFILE` — see
-  "Location profiles" above) and posting one interpolated position every
-  `GENERATE_INTERVAL_SECONDS`. Each position gets a random offset of up to `JITTER_METERS`
-  (default 40 m; `0` disables it): the route itself is deterministic, so without it every
-  lap — and every restart, which begins again at the route's start — would post at exactly
-  the same coordinates, stacking map pins so the map shows fewer dots than there are
-  sightings. No `source` field in the payload — the service derives
+- **Generates sightings** for a simulated moving pod, posting one position every
+  `GENERATE_INTERVAL_SECONDS`. How the pod moves depends on `LOCATION_PROFILE` (see
+  "Location profiles" above; `peer-service/route.py`'s `position_source()`):
+  - **Waypoint route** (`puget-sound`): walks a small fixed set of waypoints, one
+    interpolated position per sighting. Each position gets a random offset of up to
+    `JITTER_METERS` (default 40 m; `0` disables it): the route itself is deterministic, so
+    without it every lap — and every restart, which begins again at the route's start —
+    would post at exactly the same coordinates, stacking map pins so the map shows fewer
+    dots than there are sightings.
+  - **Area** (`rockwall-tx`): starts at a random point inside the lake's outline and moves
+    about 450 m per sighting in a gently curving direction, checking that every step's
+    straight line stays inside the outline, so it can't cut across a peninsula. Over time
+    the dots meander across the whole lake. No offset is applied: positions never repeat,
+    and an offset could push a point onto land. On restart it **continues from its own last
+    sighting**, heading the way it was going: at startup it follows the root document's
+    `sightings:list` link and picks out its own sightings (`source.peer_id` matching its
+    client id). It only starts somewhere random if it has none yet, or its last one isn't
+    inside the lake (e.g. left over from `puget-sound`).
+
+  No `source` field in the payload — the service derives
   `source.type: "peer"` and `source.peer_id` purely from the bearer token's own claims (see
   "Whale Alert connector" above for the same anti-spoofing pattern), so peer-service can't
   self-declare an identity any more than the Whale Alert connector can.

@@ -1,7 +1,7 @@
 """peer-service: demonstrates HATEOAS discovery and JSON-LD data from a second,
 independent system's point of view. On startup it discovers the whale-sightings service's
 own capabilities from its root document instead of hardcoding endpoint paths, then runs two
-concurrent loops: one generating sightings for a simulated moving pod along a fixed route,
+concurrent loops: one generating sightings for a simulated moving pod (see route.py),
 the other staying subscribed to the service's live-sync WebSocket so it sees every other
 create/update/delete happening on the service too — not just its own. For each created or
 updated sighting it follows the event's link, expands the response as JSON-LD, and logs
@@ -29,22 +29,15 @@ from pyld import jsonld
 
 import config
 from linked_data import CachingContextLoader, summarize
-from route import ROUTES, interpolate, jitter
+from route import Waypoint, check_profile, position_source
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("peer-service")
 
-try:
-    WAYPOINTS = ROUTES[config.LOCATION_PROFILE]
-except KeyError:
-    raise RuntimeError(
-        f"Unknown LOCATION_PROFILE {config.LOCATION_PROFILE!r}; expected one of {sorted(ROUTES)}"
-    ) from None
-
-# One additional interpolated position generated between each pair of waypoints, so
-# consecutive posted sightings trace a smoothly moving pod rather than jumping waypoint to
-# waypoint.
-STEPS_PER_WAYPOINT = 4
+# Checked at import time so an unknown profile fails at startup, not on the first sighting.
+# The position source itself is built in main(), once discovery has found where to look up
+# this peer's previous sightings (see fetch_recent_positions).
+check_profile(config.LOCATION_PROFILE)
 
 
 class PeerTokenClient:
@@ -101,6 +94,7 @@ def discover(client: httpx.Client) -> dict[str, str]:
     return {
         "create": create_link["href"],
         "create_scope": create_link["scope"],
+        "list": links["sightings:list"]["href"],
         "live_sync": links["sightings:live-sync"]["href"],
         "protected_resource": links["oauth:protected-resource"]["href"],
     }
@@ -157,6 +151,33 @@ def discover_with_retry(client: httpx.Client) -> dict[str, str]:
             time.sleep(3)
 
 
+def fetch_recent_positions(client: httpx.Client, list_url: str, count: int = 2) -> list[Waypoint]:
+    """This peer's own most recent posted positions, oldest first, so a restart can continue
+    the pod's track instead of jumping to a new random start (see route.PolygonWanderer's
+    resume_from). "Own" means source.type "peer" with peer_id equal to this peer's client id
+    — the service sets peer_id from the bearer token (see generate_sightings), so another
+    peer's sightings never match. Any failure just means a fresh random start."""
+    try:
+        response = client.get(list_url, headers={"Accept": "application/json"})
+        response.raise_for_status()
+        records = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.warning("Couldn't fetch previous sightings (%s) — starting fresh", exc)
+        return []
+
+    own = [
+        r
+        for r in records
+        if r.get("source", {}).get("type") == "peer" and r["source"].get("peer_id") == config.PEER_CLIENT_ID
+    ]
+    own.sort(key=lambda r: r["created_at"])
+    positions = []
+    for r in own[-count:]:
+        lon, lat = r["sighting"]["location"]["geometry"]["coordinates"]
+        positions.append((lat, lon))
+    return positions
+
+
 def build_sighting_payload(lat: float, lon: float) -> dict:
     when = datetime.now(timezone.utc).isoformat()
     location = {
@@ -184,19 +205,18 @@ def build_sighting_payload(lat: float, lon: float) -> dict:
     }
 
 
-async def generate_sightings(client: httpx.AsyncClient, token_client: PeerTokenClient, create_url: str) -> None:
-    """Walks the waypoint route indefinitely, POSTing one interpolated sighting every
+async def generate_sightings(
+    client: httpx.AsyncClient, token_client: PeerTokenClient, create_url: str, positions
+) -> None:
+    """Moves the simulated pod indefinitely, POSTing one sighting every
     GENERATE_INTERVAL_SECONDS. No source field in the payload at all — the service derives
     source.type="peer" and source.peer_id purely from the bearer token's own claims (see
     create_sighting in routers/sightings.py), the same anti-spoofing pattern the
-    whale-alert-connector uses. Each position gets a small random offset (see route.py's
-    jitter()) so repeated laps don't stack sightings at identical coordinates."""
-    t = 0.0
-    step = 1.0 / (len(WAYPOINTS) * STEPS_PER_WAYPOINT)
-    rng = random.Random()
+    whale-alert-connector uses. Where each sighting is comes from `positions` — a jittered
+    waypoint route or a wander inside a polygon, depending on LOCATION_PROFILE (see
+    route.position_source)."""
     while True:
-        lat, lon = jitter(interpolate(WAYPOINTS, t), config.JITTER_METERS, rng)
-        t += step
+        lat, lon = positions.next_position()
         payload = build_sighting_payload(lat, lon)
         try:
             response = await client.post(
@@ -278,6 +298,13 @@ async def main() -> None:
         discovered = discover_with_retry(sync_client)
         logger.info("Discovered: %s", discovered)
 
+        recent = fetch_recent_positions(sync_client, discovered["list"])
+        positions = position_source(config.LOCATION_PROFILE, random.Random(), config.JITTER_METERS, recent)
+        if getattr(positions, "resumed", False):
+            logger.info("Continuing from last sighting at (%.4f, %.4f)", *recent[-1])
+        else:
+            logger.info("Starting a new track (%s)", config.LOCATION_PROFILE)
+
         token_client = PeerTokenClient(
             sync_client,
             token_url=discovered["token_url"],
@@ -298,7 +325,7 @@ async def main() -> None:
 
             async with httpx.AsyncClient(verify=verify) as async_client:
                 await asyncio.gather(
-                    generate_sightings(async_client, token_client, discovered["create"]),
+                    generate_sightings(async_client, token_client, discovered["create"], positions),
                     subscribe_live_sync(discovered["live_sync"], async_client, loader),
                 )
 

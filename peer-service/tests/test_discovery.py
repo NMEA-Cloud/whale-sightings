@@ -21,6 +21,7 @@ ROOT_DOCUMENT = {
         # Deliberately not "/sightings" — proves the href is read from the document, not
         # assumed.
         "sightings:create": {"href": f"{API_BASE}/v2/reports", "method": "POST", "scope": "peer:write"},
+        "sightings:list": {"href": f"{API_BASE}/v2/reports", "method": "GET"},
         "sightings:live-sync": {"href": "wss://api.example.org:8000/v2/reports/ws"},
         "oauth:protected-resource": {"href": f"{API_BASE}/.well-known/oauth-protected-resource"},
     },
@@ -62,6 +63,7 @@ def test_discover_reads_links_by_rel_and_asks_for_jsonld():
     assert discovered == {
         "create": f"{API_BASE}/v2/reports",
         "create_scope": "peer:write",
+        "list": f"{API_BASE}/v2/reports",
         "live_sync": "wss://api.example.org:8000/v2/reports/ws",
         "protected_resource": f"{API_BASE}/.well-known/oauth-protected-resource",
     }

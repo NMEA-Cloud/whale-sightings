@@ -37,14 +37,16 @@ HYDRA_INTERNAL_BASE_URL = os.environ.get("HYDRA_INTERNAL_BASE_URL")
 
 GENERATE_INTERVAL_SECONDS = float(os.environ.get("GENERATE_INTERVAL_SECONDS", "30"))
 
-# Which waypoint route (route.py's ROUTES) the simulated pod follows — see main.py's
-# resolution of this into WAYPOINTS. "puget-sound" (the original) or "rockwall-tx" (the
-# trade-show venue's local lake, Lake Ray Hubbard) — see README's "Location profiles".
+# Where the simulated pod moves — see route.py's position_source(). "puget-sound" (the
+# original; a waypoint route) or "rockwall-tx" (the trade-show venue's local lake, Lake Ray
+# Hubbard; a wander inside the lake's outline) — see README's "Location profiles".
 LOCATION_PROFILE = os.environ.get("LOCATION_PROFILE", "puget-sound")
-# Max random offset, in meters, applied to each posted sighting's position (route.py's
-# jitter()). Without it the route is fully deterministic: every lap, and every restart,
-# posts at exactly the same coordinates, stacking map pins on top of each other. Must stay
-# well under the route's narrowest clearance from shore — see route.py. 0 disables it.
+# Waypoint-route profiles only: max random offset, in meters, applied to each posted
+# sighting's position (route.py's jitter()). Without it the route is fully deterministic:
+# every lap, and every restart, posts at exactly the same coordinates, stacking map pins on
+# top of each other. Must stay well under the route's narrowest clearance from shore — see
+# route.py. 0 disables it. Area profiles (rockwall-tx) ignore it: their positions never
+# repeat, and an offset could push a point outside the outline.
 JITTER_METERS = float(os.environ.get("JITTER_METERS", "40"))
 
 # Fixed-delay reconnect (not exponential backoff) — mirrors client-ws/app.js's own
