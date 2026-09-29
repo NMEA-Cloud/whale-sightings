@@ -107,6 +107,23 @@ above, so `service` can still resolve `hydra` by name for JWKS fetches. Bring it
 the app project with `./scripts/dev-up.sh`, or independently with
 `docker compose -f infra/docker-compose.yml up --build`.
 
+`./scripts/dev-up.sh` starts things in order and checks each stage, printing any problem in
+your terminal rather than leaving containers silently stuck in "Created":
+
+1. **Pre-flight:** creates the `whale-sightings-net` network if missing, stops with a clear
+   message if an option's `.env` file is missing (`peer-service/.env` for
+   `--with-peer-service`, `service/.env.whale-alert-connector` for `--with-whale-alert`), and
+   validates both compose configs (catching e.g. a typo in `docker-compose.override.yml`).
+2. **Infra project,** retried up to 3 times if a first start stops part-way. Its `dns`
+   container is started separately and is **optional**: if port 53 is already taken on the
+   machine, it prints a warning and carries on — clients then need the dev hostnames from a
+   hosts file or the router's DNS.
+3. **Waits for Hydra** to report ready.
+4. **App project**, with the chosen options.
+
+It then opens tmux with live logs for each project (`docker`, `infra` windows) plus a
+`shell` window.
+
 Hydra and the service identify themselves as `auth.dev.whale-auth.org` and
 `api.dev.whale-sightings.org` respectively (not `localhost`) — this is what
 `scripts/setup-tls.sh` issues certs for by default. Since these aren't real public DNS names,
