@@ -121,8 +121,17 @@ your terminal rather than leaving containers silently stuck in "Created":
 3. **Waits for Hydra** to report ready.
 4. **App project**, with the chosen options.
 
-It then opens tmux with live logs for each project (`docker`, `infra` windows) plus a
-`shell` window.
+It then prints the state of every container and returns to your prompt; everything keeps
+running in the background. Re-running it is safe: it rebuilds the images built from this
+repo and restarts their containers (which is also how a `git pull` takes effect), keeping all
+data.
+
+- **Logs:** `./scripts/dev-logs.sh` follows both projects' live logs, interleaved and
+  prefixed with each container's name (`./scripts/dev-logs.sh app` or `infra` for just one).
+  Ctrl-C stops watching, not the containers.
+- **Stop:** `./scripts/dev-down.sh` (add `--clear-data` to also wipe all sightings).
+- **Running the service's tests** on a machine that has `service/.venv` (see "Running tests"):
+  activate it yourself with `source service/.venv/bin/activate`.
 
 Hydra and the service identify themselves as `auth.dev.whale-auth.org` and
 `api.dev.whale-sightings.org` respectively (not `localhost`) — this is what
