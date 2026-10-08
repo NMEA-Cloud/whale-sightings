@@ -1,27 +1,17 @@
 #!/usr/bin/env bash
-# Starts the full dev environment, then opens a tmux session to watch it — one window each
-# for the app project's and the infra ("whale-auth") project's live logs, and a free shell
-# (with service/.venv activated, if it exists). Works from any terminal app (tmux owns the
-# panes, not the surrounding app).
+# Starts the full dev environment in the background, then returns to the prompt. Watch the
+# logs with ./scripts/dev-logs.sh; stop everything with ./scripts/dev-down.sh.
 #
 # Starts things in order and checks each stage, so a failure is reported here instead of
 # leaving containers silently stuck: pre-flight checks (shared network, the .env files the
 # chosen options need, valid compose config) -> the infra project (retried if a first start
 # stops part-way; its dns container is optional) -> wait for Hydra -> the app project.
-# Safe to re-run: if the session is already running the compose stack, this just attaches to
-# (or, if already inside tmux, switches to) it. If a stale session is lying around — e.g. a
-# previous docker compose process died from a Docker Desktop restart or the machine
-# sleeping, which by default silently closes that tmux window while the others live on — this
-# tears it down and starts fresh rather than attaching you to a half-dead environment.
+# Safe to re-run: it rebuilds the images built from this repo and restarts their containers
+# (picking up code changes, e.g. after a git pull); data in the volumes is kept.
 #
-# Requires tmux (brew install tmux), scripts/setup-tls.sh to have been run at least once, and
-# the shared external network the two compose projects join (one-time setup):
-#   docker network create whale-sightings-net
-#
-# The infra project's cert-renewer container (added for automatic TLS renewal) tolerates
-# being started before setup-tls.sh has ever run — it just waits quietly for certs/ to be
-# populated — so this isn't a hard ordering requirement, just a reminder that TLS won't
-# actually work end-to-end until that first run happens.
+# Requires scripts/setup-tls.sh to have been run at least once. The infra project's
+# cert-renewer container tolerates being started before that — it waits quietly for certs/
+# to be populated — but TLS won't work end-to-end until it has.
 #
 # Usage: ./scripts/dev-up.sh [--with-whale-alert] [--with-whale-alert-mock] [--with-peer-service]
 #   --with-whale-alert        Also start whale-alert-connector (opt-in, real Whale Alert API
@@ -60,43 +50,6 @@ for arg in "$@"; do
 done
 
 cd "$(dirname "$0")/.."
-REPO_ROOT="$(pwd)"
-SESSION="whale-sightings"
-
-if ! command -v tmux >/dev/null 2>&1; then
-  echo "tmux is not installed. Install it, then re-run this script:" >&2
-  echo "  macOS:        brew install tmux" >&2
-  echo "  Debian/Ubuntu: sudo apt install tmux" >&2
-  exit 1
-fi
-
-# tmux refuses to attach into a session from a shell that's already inside one ("sessions
-# should be nested with care") — switch-client is the equivalent move in that case.
-attach_or_switch() {
-  if [ -n "${TMUX:-}" ]; then
-    exec tmux switch-client -t "$SESSION"
-  else
-    exec tmux attach -t "$SESSION"
-  fi
-}
-
-session_is_healthy() {
-  tmux has-session -t "$SESSION" 2>/dev/null || return 1
-  # A session existing doesn't mean docker compose is actually still running inside it —
-  # check the real thing rather than trusting tmux bookkeeping. Both projects need to be up.
-  [ -n "$(docker compose ps --status running -q 2>/dev/null)" ] || return 1
-  [ -n "$(docker compose -f infra/docker-compose.yml ps --status running -q 2>/dev/null)" ]
-}
-
-if tmux has-session -t "$SESSION" 2>/dev/null; then
-  if session_is_healthy; then
-    echo "Session '$SESSION' is already running — attaching."
-    attach_or_switch
-  else
-    echo "Session '$SESSION' exists but the compose stack isn't running (stale) — recreating it."
-    tmux kill-session -t "$SESSION"
-  fi
-fi
 
 PROFILE_ARGS=()
 if [ "$WITH_WHALE_ALERT" = true ]; then
@@ -188,29 +141,18 @@ done
 curl -skf https://localhost:4444/health/ready >/dev/null 2>&1 \
   || fail "Hydra is running but not ready after 90s — check: docker compose -f infra/docker-compose.yml logs hydra"
 
-# --- 3. The app project. Detached, so an error is printed here rather than disappearing with
-# a tmux window.
+# --- 3. The app project.
 
 echo "Building and starting the app project..."
 "${APP_COMPOSE[@]}" up -d --build || fail "the app project didn't start (see the error above)."
 
-# --- 4. tmux: live logs for each project plus a free shell. Logs rather than a foreground
-# `up`, so a window never closes just because a container stopped.
+# --- 4. Report.
 
-tmux new-session -d -s "$SESSION" -n docker -c "$REPO_ROOT" "${APP_COMPOSE[*]} logs -f --tail 50"
-# Keep a window's last output visible if its process ever exits, instead of the window
-# silently vanishing.
-tmux set-option -t "$SESSION" remain-on-exit on
-tmux new-window -t "$SESSION" -n infra -c "$REPO_ROOT" "${INFRA_COMPOSE[*]} logs -f --tail 50"
-tmux new-window -t "$SESSION" -n shell -c "$REPO_ROOT"
-# Only for machines that run the service's tests locally (see the README) — absent elsewhere.
-if [ -f service/.venv/bin/activate ]; then
-  tmux send-keys -t "$SESSION:shell" "source service/.venv/bin/activate" Enter
-fi
-
-tmux select-window -t "$SESSION:docker"
-
-echo "Started tmux session '$SESSION': docker | infra | shell"
+echo
+"${INFRA_COMPOSE[@]}" ps --format 'table {{.Service}}\t{{.Status}}'
+echo
+"${APP_COMPOSE[@]}" ps --format 'table {{.Service}}\t{{.Status}}'
+echo
 if [ "$WITH_WHALE_ALERT" = true ]; then
   echo "whale-alert-connector is included (--with-whale-alert)."
 fi
@@ -220,7 +162,5 @@ fi
 if [ "$WITH_PEER_SERVICE" = true ]; then
   echo "peer-service is included (--with-peer-service)."
 fi
-echo "Switch windows with Ctrl-b <number>, detach with Ctrl-b d."
-echo "Tear down with ./scripts/dev-down.sh"
-
-attach_or_switch
+echo "Everything is up. Watch the logs with ./scripts/dev-logs.sh (Ctrl-C stops watching,"
+echo "not the containers). Stop everything with ./scripts/dev-down.sh"
